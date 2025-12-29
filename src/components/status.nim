@@ -1,9 +1,24 @@
+import std/strutils
+
 type
   LinkStatus* = enum
     Linked
     NotLinked
     Conflict
     OtherProfile
+
+  Category* = enum
+    Config
+    Share
+    Home
+    Local
+    Bin
+
+  CategoryStats* = object
+    linked*: int
+    notLinked*: int
+    conflicts*: int
+    other*: int
 
   StatusData* = object
     count*: int
@@ -23,6 +38,13 @@ type
     homePaths*: seq[string]
     statuses*: seq[LinkStatus]
 
+  StatusFilter* = enum
+    FilterAll
+    FilterLinked
+    FilterNotLinked
+    FilterConflicts
+    FilterOther
+
 proc initStatusData*(capacity: int = 8192): StatusData =
   StatusData(
     count: 0,
@@ -34,6 +56,25 @@ proc initStatusData*(capacity: int = 8192): StatusData =
     homePaths: newSeq[string](capacity),
     statuses: newSeq[LinkStatus](capacity),
   )
+
+proc getCategory*(relPath: string): Category =
+  let parts = relPath.split("/")
+  if parts.len == 0:
+    return Config
+
+  case parts[0]
+  of "config":
+    return Config
+  of "share":
+    return Share
+  of "home":
+    return Home
+  of "local":
+    return Local
+  of "bin":
+    return Bin
+  else:
+    return Config
 
 proc addStatusEntry*(
     data: var StatusData, relPath, homePath: string, status: LinkStatus
