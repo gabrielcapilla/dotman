@@ -1,6 +1,8 @@
 import std/[os, strutils]
 import ../core/path
 import ../components/profiles
+import path_resolution
+import add_system
 
 proc isDotmanManaged*(linkPath: string, profile: string): bool =
   let profileDir = getDotmanDir() / profile
@@ -15,11 +17,15 @@ proc isDotmanManaged*(linkPath: string, profile: string): bool =
 
   return false
 
-proc unsetFile*(profile: string, homePath: string) =
+proc unsetFile*(profile: string, name: string) =
   let profileDir = getDotmanDir() / profile
 
   if not dirExists(profileDir):
     raise ProfileError(msg: "Profile not found: " & profile)
+
+  let relPath = findFileInProfile(profile, name)
+  let fullPath = profileDir / relPath
+  let homePath = resolveDestPath(profileDir, relPath)
 
   if not isDotmanManaged(homePath, profile):
     raise ProfileError(msg: "File is not managed by dotman")
@@ -28,8 +34,6 @@ proc unsetFile*(profile: string, homePath: string) =
 
   removeFile(homePath)
   echo "Removed symlink: " & homePath
-
-  let relPath = target[profileDir.len + 1 ..^ 1]
 
   if fileExists(target):
     moveFile(target, homePath)
