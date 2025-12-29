@@ -1,4 +1,4 @@
-import std/parseopt
+import std/[parseopt, os]
 import core/[help, types]
 import
   systems/[
@@ -11,6 +11,10 @@ proc parseCli*() =
   var p = initOptParser()
   var currentProfile = MainProfile
   var command = ""
+
+  if paramCount() == 0:
+    help.showHelp()
+    return
 
   while true:
     p.next()
