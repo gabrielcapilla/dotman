@@ -1,35 +1,21 @@
-import std/[os, strutils]
+import std/os
 import ../core/path
+import ../components/batches
 import ../components/profiles
-import path_resolution
 import symlink_ops
+import validation_system
 
-proc validatePush*(profile: string): seq[string] =
+proc validatePush*(profile: string): ValidationResult =
   let profileDir = getDotmanDir() / profile
-  let home = getHomeDir()
-  var conflicts: seq[string] = @[]
+  var batch = initFileBatch(1024)
 
   for kind, categoryPath in walkDir(profileDir, relative = true):
     if kind == pcDir:
       let catDir = profileDir / categoryPath
+      for kind2, itemPath in walkDir(catDir, relative = true):
+        createSymlinksRecursive(profileDir, categoryPath / itemPath, batch)
 
-      for itemPath in walkDirRec(catDir, relative = true):
-        let fullPath = catDir / itemPath
-        let relPath = categoryPath / itemPath
-        let homePath = resolveDestPath(profileDir, relPath)
-
-        if dirExists(fullPath) or fileExists(fullPath):
-          if fileExists(homePath) or dirExists(homePath):
-            if symlinkExists(homePath):
-              let target = expandSymlink(homePath)
-              if target != fullPath and target.startsWith(profileDir):
-                conflicts.add(homePath & " (linked to other profile)")
-              elif not target.startsWith(profileDir):
-                conflicts.add(homePath & " (exists, not managed by dotman)")
-            else:
-              conflicts.add(homePath & " (exists, not managed by dotman)")
-
-  return conflicts
+  validateBatch(batch, profileDir)
 
 proc pushProfile*(profile: string) =
   let profileDir = getDotmanDir() / profile
@@ -39,57 +25,34 @@ proc pushProfile*(profile: string) =
 
   echo "Validating..."
 
-  let conflicts = validatePush(profile)
-  if conflicts.len > 0:
+  let validationResult = validatePush(profile)
+  if validationResult.hasConflicts:
     echo "Error: Cannot push, conflicts found:"
-    for conflict in conflicts:
-      echo "  " & conflict
+    for i in 0 ..< validationResult.count:
+      let error = validationResult.errors[i]
+      echo "  " & error.path & " (" & error.reason & ")"
     raise ProfileError(msg: "Fix conflicts and try again")
 
-  var totalFiles = 0
+  var batch = initFileBatch(1024)
+
   for kind, categoryPath in walkDir(profileDir, relative = true):
     if kind == pcDir:
       let catDir = profileDir / categoryPath
-      for itemPath in walkDirRec(catDir, relative = true):
-        let fullPath = catDir / itemPath
-        if dirExists(fullPath) or fileExists(fullPath):
-          totalFiles += 1
+      for kind2, itemPath in walkDir(catDir, relative = true):
+        createSymlinksRecursive(profileDir, categoryPath / itemPath, batch)
 
-  if totalFiles == 0:
+  if batch.count == 0:
     echo "Warning: No files found in profile '" & profile & "'"
     echo "Nothing to push."
     return
 
   echo "Creating symlinks..."
 
-  var linkedCount = 0
-  for kind, categoryPath in walkDir(profileDir, relative = true):
-    if kind == pcDir:
-      let catDir = profileDir / categoryPath
-
-      for itemPath in walkDirRec(catDir, relative = true):
-        let fullPath = catDir / itemPath
-        let relPath = categoryPath / itemPath
-
-        if dirExists(fullPath) or fileExists(fullPath):
-          let homePath = resolveDestPath(profileDir, relPath)
-
-          if symlinkExists(homePath):
-            let target = expandSymlink(homePath)
-            if target == fullPath:
-              linkedCount += 1
-              echo "  Skipped: " & homePath & " (already linked)"
-            else:
-              raise ProfileError(msg: "Conflict detected: " & homePath)
-          else:
-            let (head, _) = splitPath(homePath)
-            if head != "" and not dirExists(head):
-              createDir(head)
-
-            symlink_ops.createLink(fullPath, homePath)
-            linkedCount += 1
-            echo "  Linked " & $linkedCount & "/" & $totalFiles & ": " & homePath &
-              " → dotman/" & profile & "/" & relPath
+  for i in 0 ..< batch.count:
+    let source = batch.sources[i]
+    let dest = batch.destinations[i]
+    symlink_ops.createLink(source, dest)
+    echo "  Linked " & $(i + 1) & "/" & $batch.count & ": " & dest
 
   echo ""
-  echo "Done! " & $linkedCount & " files linked."
+  echo "Done! " & $batch.count & " files linked."

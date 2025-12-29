@@ -1,28 +1,39 @@
 import std/os
 import ../core/path
+import ../components/batches
 import ../components/profiles
 import path_resolution
+import symlink_ops
 
-proc validatePull*(profile: string): seq[string] =
+proc validatePull*(profile: string): FileBatch =
   let profileDir = getDotmanDir() / profile
-  var linksToRemove: seq[string] = @[]
+  var batch = initFileBatch(1024)
 
   for kind, categoryPath in walkDir(profileDir, relative = true):
     if kind == pcDir:
       let catDir = profileDir / categoryPath
-
-      for itemPath in walkDirRec(catDir, relative = true):
+      for kind2, itemPath in walkDir(catDir, relative = true):
         let fullPath = catDir / itemPath
         let relPath = categoryPath / itemPath
-        let homePath = resolveDestPath(profileDir, relPath)
+        let destPath = resolveDestPath(profileDir, relPath)
 
-        if dirExists(fullPath) or fileExists(fullPath):
-          if symlinkExists(homePath):
-            let target = expandSymlink(homePath)
+        if kind2 == pcDir and dirExists(fullPath):
+          if symlinkExists(destPath) and dirExists(destPath):
+            let target = expandSymlink(destPath)
             if target == fullPath:
-              linksToRemove.add(homePath)
+              batch.addToFileBatch(fullPath, destPath)
+          elif dirExists(destPath) or symlinkExists(destPath):
+            var tempBatch = initFileBatch(64)
+            createSymlinksRecursive(profileDir, relPath, tempBatch)
+            for i in 0 ..< tempBatch.count:
+              batch.addToFileBatch(tempBatch.sources[i], tempBatch.destinations[i])
+        elif kind2 == pcFile and fileExists(fullPath):
+          if symlinkExists(destPath):
+            let target = expandSymlink(destPath)
+            if target == fullPath:
+              batch.addToFileBatch(fullPath, destPath)
 
-  return linksToRemove
+  return batch
 
 proc pullProfile*(profile: string) =
   let profileDir = getDotmanDir() / profile
@@ -34,7 +45,7 @@ proc pullProfile*(profile: string) =
 
   let linksToRemove = validatePull(profile)
 
-  if linksToRemove.len == 0:
+  if linksToRemove.count == 0:
     echo "Warning: No symlinks found for profile '" & profile & "'"
     echo "Nothing to pull."
     return
@@ -42,13 +53,12 @@ proc pullProfile*(profile: string) =
   echo "Removing symlinks..."
 
   var removedCount = 0
-  let totalLinks = linksToRemove.len
-
-  for homePath in linksToRemove:
+  for i in 0 ..< linksToRemove.count:
+    let homePath = linksToRemove.destinations[i]
     if symlinkExists(homePath):
       removeFile(homePath)
       removedCount += 1
-      echo "  Removed " & $removedCount & "/" & $totalLinks & ": " & homePath
+      echo "  Removed " & $removedCount & "/" & $linksToRemove.count & ": " & homePath
 
   echo ""
   echo "Done! " & $removedCount & " links removed."

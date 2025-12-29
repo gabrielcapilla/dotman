@@ -1,7 +1,9 @@
 import std/os
 import ../core/path
-import ../components/[profiles, symlinks]
-import path_resolution, symlink_ops
+import ../components/batches
+import ../components/profiles
+import symlink_ops
+import validation_system
 
 proc findFileInProfile*(profile: string, name: string): string =
   let profileDir = getDotmanDir() / profile
@@ -40,15 +42,25 @@ proc addFile*(profile: string, name: string) =
   let relPath = findFileInProfile(profile, name)
   let fullPath = profileDir / relPath
 
-  if dirExists(fullPath):
-    let destPath = resolveDestPath(profileDir, relPath)
-    createLink(fullPath, destPath)
-    echo "Linked: " & destPath & " → " & fullPath
-  else:
-    var batch = SymlinkBatch(count: 0, links: newSeq[SymlinkRef](1024))
-    createSymlinksRecursive(profileDir, relPath, batch)
+  var batch = initFileBatch(1024)
 
-    for i in 0 ..< batch.count:
-      let link = batch.links[i]
-      createLink(link.source, link.dest)
-      echo "Linked: " & link.dest & " → " & link.source
+  createSymlinksRecursive(profileDir, relPath, batch)
+
+  if batch.count == 0:
+    echo "Warning: No files found to link for '" & name & "'"
+    return
+
+  echo "Validating links..."
+  let validationResult = validateBatch(batch, profileDir)
+
+  if validationResult.hasConflicts:
+    for i in 0 ..< validationResult.count:
+      let error = validationResult.errors[i]
+      raise ProfileError(msg: "Conflict: " & error.path & " (" & error.reason & ")")
+
+  echo "Creating symlinks..."
+  for i in 0 ..< batch.count:
+    let source = batch.sources[i]
+    let dest = batch.destinations[i]
+    createLink(source, dest)
+    echo "  Linked: " & dest & " → " & source
