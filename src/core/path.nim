@@ -1,4 +1,4 @@
 import std/os
 
 proc getDotmanDir*(): string =
-  getHomeDir() / "dotman"
+  getHomeDir() / ".dotfiles"
