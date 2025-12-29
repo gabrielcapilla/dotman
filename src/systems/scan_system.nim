@@ -17,6 +17,22 @@ proc estimateFileCount*(dir: string): int =
   except:
     return 1024
 
+proc isParentSymlinked*(fullPath, homePath, profileDir: string): bool =
+  var currentHome = homePath.parentDir
+  var currentFull = fullPath.parentDir
+
+  while currentHome != getHomeDir() and currentFull != profileDir:
+    if symlinkExists(currentHome):
+      let target = expandSymlink(currentHome)
+      if target == currentFull:
+        return true
+      elif target.startsWith(profileDir):
+        return true
+    currentHome = currentHome.parentDir
+    currentFull = currentFull.parentDir
+
+  return false
+
 proc determineStatus*(fullPath, homePath, profileDir: string): LinkStatus =
   if symlinkExists(homePath):
     let target = expandSymlink(homePath)
@@ -26,6 +42,8 @@ proc determineStatus*(fullPath, homePath, profileDir: string): LinkStatus =
       return OtherProfile
     return Conflict
   elif fileExists(homePath) or dirExists(homePath):
+    if isParentSymlinked(fullPath, homePath, profileDir):
+      return Linked
     return Conflict
   return NotLinked
 
