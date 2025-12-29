@@ -1,21 +1,69 @@
 import ../core/types
 
 type
-  Profile* = object
-    name*: ProfileName
-    path*: string
+  ProfileData* = object
+    count*: int
+    capacity*: int
+    ids*: seq[ProfileId]
+    names*: seq[ProfileName]
+    paths*: seq[string]
+    active*: seq[bool]
 
   ProfileList* = object
-    count*: int
-    profiles*: seq[Profile]
+    names*: seq[ProfileName]
+    paths*: seq[string]
 
   ProfileError* = ref object of CatchableError
 
+proc initProfileData*(capacity: int = MaxProfiles.int): ProfileData =
+  ProfileData(
+    count: 0,
+    capacity: capacity,
+    ids: newSeq[ProfileId](capacity),
+    names: newSeq[ProfileName](capacity),
+    paths: newSeq[string](capacity),
+    active: newSeq[bool](capacity),
+  )
+
+proc addProfile*(data: var ProfileData, name: string, path: string): ProfileId =
+  if data.count >= data.capacity:
+    raise ProfileError(msg: "Profile capacity exceeded")
+
+  let idx = data.count
+  data.ids[idx] = ProfileId(idx)
+  data.names[idx] = ProfileName(data: name)
+  data.paths[idx] = path
+  data.active[idx] = true
+  data.count += 1
+
+  data.ids[idx]
+
+proc removeProfile*(data: var ProfileData, id: ProfileId) =
+  let idx = int32(id)
+  if idx < 0 or idx >= data.count:
+    raise ProfileError(msg: "Invalid profile ID")
+
+  data.active[idx] = false
+
+proc findProfileId*(data: ProfileData, name: string): ProfileId =
+  for i in 0 ..< data.count:
+    if data.active[i] and data.names[i].data == name:
+      return data.ids[i]
+  ProfileIdInvalid
+
+proc getProfilePath*(data: ProfileData, id: ProfileId): string =
+  let idx = int32(id)
+  if idx < 0 or idx >= data.count or not data.active[idx]:
+    raise ProfileError(msg: "Profile not found")
+  data.paths[idx]
+
 proc initProfileList*(capacity: int = MaxProfiles.int): ProfileList =
-  ProfileList(count: 0, profiles: newSeq[Profile](capacity))
+  ProfileList(
+    names: newSeqOfCap[ProfileName](capacity), paths: newSeqOfCap[string](capacity)
+  )
 
 proc findProfile*(list: ProfileList, name: string): int =
-  for i in 0 ..< list.count:
-    if list.profiles[i].name.data == name:
+  for i in 0 ..< list.names.len:
+    if list.names[i].data == name:
       return i
   -1
