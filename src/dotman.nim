@@ -1,6 +1,10 @@
 import std/parseopt
 import core/[help, types]
-import systems/[cli_ops, add_system, remove_system, set_system, unset_system]
+import
+  systems/[
+    cli_ops, add_system, remove_system, set_system, unset_system, status_system,
+    push_system, pull_system,
+  ]
 import components/profiles
 
 proc parseCli*() =
@@ -90,6 +94,14 @@ proc parseCli*() =
         of "unset":
           p.next()
           unset_system.unsetFile(currentProfile, p.key)
+        of "status":
+          status_system.showStatus(currentProfile)
+        of "push":
+          p.next()
+          push_system.pushProfile(p.key)
+        of "pull":
+          p.next()
+          pull_system.pullProfile(p.key)
         of "help":
           help.showHelp()
         of "version":
