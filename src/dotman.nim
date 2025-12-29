@@ -1,6 +1,6 @@
 import std/parseopt
 import core/[help, types]
-import systems/[cli_ops, add_system, remove_system]
+import systems/[cli_ops, add_system, remove_system, set_system, unset_system]
 import components/profiles
 
 proc parseCli*() =
@@ -41,6 +41,14 @@ proc parseCli*() =
         if val.len == 0:
           p.next()
         add_system.addFile(currentProfile, if val.len == 0: p.key else: val)
+      of "s", "set":
+        if val.len == 0:
+          p.next()
+        set_system.moveFileToProfile(currentProfile, if val.len == 0: p.key else: val)
+      of "u", "unset":
+        if val.len == 0:
+          p.next()
+        unset_system.unsetFile(currentProfile, if val.len == 0: p.key else: val)
       of "profile":
         if val.len == 0:
           p.next()
@@ -76,6 +84,12 @@ proc parseCli*() =
         of "add":
           p.next()
           add_system.addFile(currentProfile, p.key)
+        of "set":
+          p.next()
+          set_system.moveFileToProfile(currentProfile, p.key)
+        of "unset":
+          p.next()
+          unset_system.unsetFile(currentProfile, p.key)
         of "help":
           help.showHelp()
         of "version":
