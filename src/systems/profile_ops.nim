@@ -15,7 +15,7 @@ proc createProfile*(name: string) =
   if not dirExists(dir):
     raise ProfileError(msg: "Not initialized")
 
-  let profilePath = dir / name
+  let profilePath = getDotmanDir() / name
   if dirExists(profilePath):
     raise ProfileError(msg: "Profile exists: " & name)
 
@@ -26,8 +26,8 @@ proc cloneProfile*(source: string, dest: string) =
   if not dirExists(dir):
     raise ProfileError(msg: "Not initialized")
 
-  let sourcePath = dir / source
-  let destPath = dir / dest
+  let sourcePath = getDotmanDir() / source
+  let destPath = getDotmanDir() / dest
 
   if not dirExists(sourcePath):
     raise ProfileError(msg: "Source not found: " & source)
@@ -41,8 +41,7 @@ proc removeProfile*(name: string) =
   if name == MainProfile:
     raise ProfileError(msg: "Cannot remove main profile")
 
-  let dir = getDotmanDir()
-  let profilePath = dir / name
+  let profilePath = getDotmanDir() / name
 
   if not dirExists(profilePath):
     raise ProfileError(msg: "Profile not found: " & name)
@@ -58,3 +57,12 @@ proc listProfiles*(): seq[string] =
   for kind, path in walkDir(dir):
     if kind == pcDir:
       result.add(path.splitPath.tail)
+
+proc profileExists*(name: string): bool =
+  let dir = getDotmanDir()
+  if not dirExists(dir):
+    return false
+  dirExists(dir / name)
+
+proc getProfilePathByName*(name: string): string {.noSideEffect.} =
+  getDotmanDir() / name

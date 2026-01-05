@@ -3,7 +3,7 @@ import core/[help, types, path]
 import
   systems/[
     cli_ops, add_system, remove_system, set_system, unset_system, status_system,
-    push_system, pull_system, scan_system,
+    push_system, pull_system, scan_system, profile_ops,
   ]
 import components/[profiles, status]
 
@@ -81,10 +81,32 @@ proc parseCli*() =
   var p = initOptParser()
   var currentProfile = MainProfile
   var command = ""
+  var deleteProfileName = ""
 
   if paramCount() == 0:
     help.showHelp()
     return
+
+  while true:
+    p.next()
+    case p.kind
+    of cmdEnd:
+      break
+    of cmdShortOption, cmdLongOption:
+      if p.key == "delete-profile":
+        if p.val.len == 0:
+          p.next()
+          deleteProfileName = p.key
+        else:
+          deleteProfileName = p.val
+
+        profile_ops.removeProfile(deleteProfileName)
+        echo "Removed profile: " & deleteProfileName
+        quit(0)
+    of cmdArgument:
+      break
+
+  p = initOptParser()
 
   while true:
     p.next()
@@ -109,10 +131,8 @@ proc parseCli*() =
         p.next()
         cli_ops.runProfileClone(src, p.key)
       of "r", "remove":
-        if val.len == 0:
-          p.next()
-        let name = if val.len == 0: p.key else: val
-        remove_system.removeFile(currentProfile, name)
+        if val.len > 0:
+          remove_system.removeFile(currentProfile, val)
       of "l", "list":
         cli_ops.runProfileList()
       of "a", "add":
@@ -130,9 +150,7 @@ proc parseCli*() =
       of "profile":
         if val.len == 0:
           p.next()
-          currentProfile = p.key
-        else:
-          currentProfile = val
+        currentProfile = if val.len == 0: p.key else: val
       of "help", "h":
         help.showHelp()
       of "v", "version":

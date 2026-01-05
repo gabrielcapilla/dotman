@@ -1,29 +1,128 @@
+import std/[strformat, os, strutils]
+
+const
+  reset* = "\e[0m"
+  red* = "\e[31m"
+  green* = "\e[32m"
+  yellow* = "\e[33m"
+  blue* = "\e[34m"
+  magenta* = "\e[35m"
+  cyan* = "\e[36m"
+  white* = "\e[37m"
+  bold* = "\e[1m"
+
+func stripAnsi*(s: string): string =
+  result = newStringOfCap(s.len)
+  var i = 0
+  while i < s.len:
+    if s[i] == '\e' and i + 1 < s.len and s[i + 1] == '[':
+      i += 2
+      while i < s.len and s[i] notin {'m', 'K', 'H', 'f'}:
+        i += 1
+      if i < s.len:
+        i += 1
+    else:
+      result.add(s[i])
+      i += 1
+
+proc pad*(cmd: string, desc: string, column: int): string =
+  let padding = max(0, column - stripAnsi(cmd).len)
+  cmd & spaces(padding) & (if desc.len > 0: " " & desc else: desc)
+
+proc getAppName*(): string =
+  result = extractFilename(getAppFilename())
+  if result == "":
+    result = "dotman"
+
 proc showHelp*() =
-  echo "Profile commands:"
-  echo "  dotman init"
-  echo "  dotman make <name>"
-  echo "  dotman clone <src> <dest>"
-  echo "  dotman list"
+  let binName = getAppName()
+
+  echo pad(fmt"{yellow}Usage:{reset} {binName} [options] {blue}<command>{reset}", "", 0)
+
   echo ""
-  echo "Manage commands:"
-  echo "  dotman set <file>"
-  echo "  dotman unset <file>"
+  echo "Dotfile Manager - Manage your dotfiles with profiles and symlinks."
+
   echo ""
-  echo "Link commands:"
-  echo "  dotman add <file>"
-  echo "  dotman remove <file>"
+  echo pad(fmt"{yellow}Profile Commands:{reset}", "", 0)
+  echo pad(fmt"{green}  init, -i{reset}", "Initialize dotman in current directory.", 28)
+  echo pad(
+    fmt"{green}  make, -m{reset}{blue} <name>{reset}", "Create a new profile.", 28
+  )
+  echo pad(
+    fmt"{green}  clone, -c{reset}{blue} <src> <dest>{reset}",
+    "Clone an existing profile.",
+    28,
+  )
+  echo pad(fmt"{green}  list, -l{reset}", "List all profiles.", 28)
+
   echo ""
-  echo "Misc commands:"
-  echo "  dotman status"
-  echo "  dotman push <profile>"
-  echo "  dotman pull <profile>"
+  echo pad(fmt"{yellow}Manage Commands:{reset}", "", 0)
+  echo pad(
+    fmt"{green}  set, -s{reset}{blue} <file>{reset}",
+    "Move file to profile and create symlink.",
+    28,
+  )
+  echo pad(
+    fmt"{green}  unset, -u{reset}{blue} <file>{reset}",
+    "Unset file from profile (restore original).",
+    28,
+  )
+
   echo ""
-  echo "Options:"
-  echo "  dotman --profile <name>"
-  echo "  dotman version"
-  echo "  dotman help"
+  echo pad(fmt"{yellow}Link Commands:{reset}", "", 0)
+  echo pad(
+    fmt"{green}  add, -a{reset}{blue} <file>{reset}",
+    "Add file (create symlink from existing).",
+    28,
+  )
+  echo pad(fmt"{green}  remove, -r{reset}{blue} <file>{reset}", "Remove symlink.", 28)
+
+  echo ""
+  echo pad(fmt"{yellow}Status Commands:{reset}", "", 0)
+  echo pad(fmt"{green}  status{reset}", "Show profile status.", 28)
+  echo pad(
+    fmt"{cyan}    --category{reset}{blue} <cat>{reset}",
+    "Filter by category (config, share, home, local, bin).",
+    28,
+  )
+  echo pad(fmt"{cyan}    --conflicts{reset}", "Show conflicting files only.", 28)
+  echo pad(fmt"{cyan}    --linked{reset}", "Show linked files only.", 28)
+  echo pad(fmt"{cyan}    --not-linked{reset}", "Show unlinked files only.", 28)
+  echo pad(fmt"{cyan}    --other{reset}", "Show other files in profile.", 28)
+  echo pad(fmt"{cyan}    --ascii{reset}", "Use ASCII characters in table.", 28)
+  echo pad(fmt"{cyan}    --verbose, -v{reset}", "Show detailed information.", 28)
+
+  echo ""
+  echo pad(fmt"{yellow}Sync Commands:{reset}", "", 0)
+  echo pad(
+    fmt"{green}  push{reset}{blue} <profile>{reset}",
+    "Push changes from home to profile.",
+    28,
+  )
+  echo pad(
+    fmt"{green}  pull{reset}{blue} <profile>{reset}",
+    "Pull changes from profile to home.",
+    28,
+  )
+
+  echo ""
+  echo pad(fmt"{yellow}Options:{reset}", "", 0)
+  echo pad(
+    fmt"{cyan}  --profile{reset}{blue} <name>{reset}",
+    "Set active profile (default: main).",
+    28,
+  )
+  echo pad(
+    fmt"{cyan}  --delete-profile{reset}{blue} <name>{reset}",
+    "Delete an existing profile.",
+    28,
+  )
+  echo pad(fmt"{cyan}  --help, -h{reset}", "Show this help message.", 28)
+  echo pad(fmt"{cyan}  --version, -v{reset}", "Show version information.", 28)
+
   quit(0)
 
 proc showVersion*() =
-  echo "dotman 0.1.0"
+  let binName = getAppName()
+  echo fmt"{green}{binName}{reset} 0.1.0"
   quit(0)
