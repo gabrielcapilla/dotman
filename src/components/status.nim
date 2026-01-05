@@ -57,7 +57,7 @@ proc initStatusData*(capacity: int = 8192): StatusData =
     statuses: newSeq[LinkStatus](capacity),
   )
 
-proc getCategory*(relPath: string): Category =
+proc getCategory*(relPath: string): Category {.noSideEffect.} =
   let parts = relPath.split("/")
   if parts.len == 0:
     return Config
@@ -98,3 +98,25 @@ proc addStatusEntry*(
     inc(data.notLinked)
   of Conflict, OtherProfile:
     inc(data.conflicts)
+
+proc removeIndex*(data: var StatusData, index: int) =
+  if index < 0 or index >= data.count:
+    raise newException(IndexDefect, "Index out of bounds")
+
+  let last = data.count - 1
+
+  let removedStatus = data.statuses[index]
+  case removedStatus
+  of Linked:
+    dec(data.linked)
+  of NotLinked:
+    dec(data.notLinked)
+  of Conflict, OtherProfile:
+    dec(data.conflicts)
+
+  if index != last:
+    data.relPaths[index] = data.relPaths[last]
+    data.homePaths[index] = data.homePaths[last]
+    data.statuses[index] = data.statuses[last]
+
+  data.count -= 1

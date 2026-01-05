@@ -13,7 +13,7 @@ type
     capacity*: int
     errors*: seq[ValidationError]
 
-proc initValidationResult*(capacity: int = 1024): ValidationResult =
+proc initValidationResult*(capacity: int = 1024): ValidationResult {.noSideEffect.} =
   ValidationResult(
     hasConflicts: false,
     count: 0,

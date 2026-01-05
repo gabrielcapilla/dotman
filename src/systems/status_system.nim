@@ -159,7 +159,8 @@ proc showCategorySummary*(
 
         var rows: seq[seq[Cell]] = @[]
         for subStats in catStats.subCategories:
-          if subStats.linked + subStats.notLinked + subStats.conflicts + subStats.other > 0:
+          if subStats.linked + subStats.notLinked + subStats.conflicts + subStats.other >
+              0:
             let displayName =
               if subStats.name.len == 0:
                 catName & "/(root)"

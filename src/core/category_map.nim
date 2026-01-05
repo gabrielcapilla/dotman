@@ -2,7 +2,9 @@ import std/os
 
 type Category* = distinct string
 
-proc getDestPath*(category: string, home: string, filename: string): string =
+proc getDestPath*(
+    category: string, home: string, filename: string
+): string {.noSideEffect.} =
   if category == "home":
     result = home / filename
   elif category == "config":

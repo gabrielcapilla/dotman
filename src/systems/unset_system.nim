@@ -24,7 +24,6 @@ proc unsetFile*(profile: string, name: string) =
     raise ProfileError(msg: "Profile not found: " & profile)
 
   let relPath = findFileInProfile(profile, name)
-  let fullPath = profileDir / relPath
   let homePath = resolveDestPath(profileDir, relPath)
 
   if not isDotmanManaged(homePath, profile):

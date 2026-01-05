@@ -45,6 +45,20 @@ proc removeProfile*(data: var ProfileData, id: ProfileId) =
 
   data.active[idx] = false
 
+proc removeIndex*(data: var ProfileData, index: int) =
+  if index < 0 or index >= data.count:
+    raise newException(IndexDefect, "Index out of bounds")
+
+  let last = data.count - 1
+
+  if index != last:
+    data.ids[index] = data.ids[last]
+    data.names[index] = data.names[last]
+    data.paths[index] = data.paths[last]
+    data.active[index] = data.active[last]
+
+  data.count -= 1
+
 proc findProfileId*(data: ProfileData, name: string): ProfileId =
   for i in 0 ..< data.count:
     if data.active[i] and data.names[i].data == name:

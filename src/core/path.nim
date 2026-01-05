@@ -1,4 +1,4 @@
 import std/os
 
-proc getDotmanDir*(): string =
+proc getDotmanDir*(): string {.inline, noSideEffect.} =
   getHomeDir() / ".dotfiles"

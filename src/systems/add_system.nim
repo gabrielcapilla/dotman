@@ -40,7 +40,6 @@ proc findFileInProfile*(profile: string, name: string): string =
 proc addFile*(profile: string, name: string) =
   let profileDir = getDotmanDir() / profile
   let relPath = findFileInProfile(profile, name)
-  let fullPath = profileDir / relPath
 
   var batch = initFileBatch(1024)
 

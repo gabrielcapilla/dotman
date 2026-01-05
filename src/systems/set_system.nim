@@ -17,9 +17,6 @@ proc inferCategoryFromHome*(
   if parts.len == 0:
     raise ProfileError(msg: "Invalid path")
 
-  let pathParts = parts[0 ..^ 2]
-  let filename = parts[^1]
-
   if parts[0] == ".config":
     return (
       "config",

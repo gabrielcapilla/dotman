@@ -1,7 +1,9 @@
 import std/[os, strutils]
 import ../core/category_map
 
-proc resolveDestPath*(profileDir: string, relativePath: string): string =
+proc resolveDestPath*(
+    profileDir: string, relativePath: string
+): string {.noSideEffect.} =
   let home = getHomeDir()
   let parts = relativePath.split("/")
   let category = parts[0]

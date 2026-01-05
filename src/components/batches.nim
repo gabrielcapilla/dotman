@@ -23,6 +23,18 @@ proc addToFileBatch*(batch: var FileBatch, source, dest: string) =
   batch.destinations[batch.count] = dest
   batch.count += 1
 
+proc removeIndex*(batch: var FileBatch, index: int) =
+  if index < 0 or index >= batch.count:
+    raise newException(IndexDefect, "Index out of bounds")
+
+  let last = batch.count - 1
+
+  if index != last:
+    batch.sources[index] = batch.sources[last]
+    batch.destinations[index] = batch.destinations[last]
+
+  batch.count -= 1
+
 proc clearBatch*(batch: var FileBatch) =
   batch.count = 0
 

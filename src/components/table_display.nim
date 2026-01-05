@@ -50,7 +50,7 @@ const
     cross: "+",
   )
 
-proc newCell*(content: string, align: CellAlign = AlignLeft): Cell =
+proc newCell*(content: string, align: CellAlign = AlignLeft): Cell {.inline.} =
   Cell(content: content, align: align)
 
 func renderLine*(
@@ -65,7 +65,7 @@ func renderLine*(
 
 func renderRow*(
     cells: openArray[Cell], colWidths: openArray[int], style: BoxStyle
-): string =
+): string {.noSideEffect.} =
   result = style.vert
   for i, cell in cells:
     let width = colWidths[i]
@@ -84,7 +84,7 @@ func renderRow*(
 
     result.add(style.vert)
 
-func calculateColumnWidths*(rows: openArray[seq[Cell]]): seq[int] =
+func calculateColumnWidths*(rows: openArray[seq[Cell]]): seq[int] {.noSideEffect.} =
   let colCount = rows[0].len
   result = newSeq[int](colCount)
 
