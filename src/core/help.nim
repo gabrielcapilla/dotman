@@ -96,5 +96,5 @@ proc showHelp*() =
 
 proc showVersion*() =
   let binName = getAppName()
-  echo fmt"{green}{binName}{reset} 0.1.0"
+  echo fmt"{green}{binName}{reset} 0.2.0"
   quit(0)
