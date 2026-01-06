@@ -1,12 +1,9 @@
 import std/[os, strutils]
-import ../core/path
+import ../core/[types, result, execution]
 import ../components/profiles
-import path_resolution
-import add_system
+import path_resolution, add_system
 
-proc isDotmanManaged*(linkPath: string, profile: string): bool =
-  let profileDir = getDotmanDir() / profile
-
+proc isDotmanManaged*(linkPath: string, profileDir: string): bool =
   if not symlinkExists(linkPath):
     return false
 
@@ -17,26 +14,26 @@ proc isDotmanManaged*(linkPath: string, profile: string): bool =
 
   return false
 
-proc unsetFile*(profile: string, name: string) =
-  let profileDir = getDotmanDir() / profile
+proc planUnsetFile*(
+    profiles: ProfileData, profileId: ProfileId, name: string
+): ExecutionPlan =
+  let profileDir = profiles.getProfilePath(profileId)
 
-  if not dirExists(profileDir):
-    raise ProfileError(msg: "Profile not found: " & profile)
-
-  let relPath = findFileInProfile(profile, name)
+  let relPath = findFileInProfile(profiles, profileId, name)
   let homePath = resolveDestPath(profileDir, relPath)
 
-  if not isDotmanManaged(homePath, profile):
+  if not isDotmanManaged(homePath, profileDir):
     raise ProfileError(msg: "File is not managed by dotman")
 
   let target = expandSymlink(homePath)
 
-  removeFile(homePath)
-  echo "Removed symlink: " & homePath
+  result = initExecutionPlan(3)
+
+  result.addRemoveSymlink(homePath)
+
+  result.addCreateDir(homePath.parentDir)
 
   if fileExists(target):
-    moveFile(target, homePath)
+    result.addMoveFile(target, homePath)
   elif dirExists(target):
-    moveDir(target, homePath)
-
-  echo "Restored: " & homePath & " ← " & target
+    result.addMoveDir(target, homePath)

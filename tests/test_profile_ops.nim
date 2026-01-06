@@ -2,6 +2,7 @@ import std/[os, unittest, tempfiles]
 import ../src/systems/profile_ops
 import ../src/core/path
 import ../src/core/types
+import ../src/core/result
 import ../src/components/profiles
 
 suite "Profile Operations Tests":

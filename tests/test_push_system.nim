@@ -2,9 +2,35 @@ import std/[os, unittest, tempfiles]
 import ../src/systems/push_system
 import ../src/systems/profile_ops
 import ../src/systems/add_system
+import ../src/systems/execution_engine
 import ../src/core/path
 import ../src/core/types
+import ../src/core/result
 import ../src/components/profiles
+
+# Helper wrappers to adapt tests to new API
+proc addFileWrapper(profileName: string, fileName: string) =
+  var profiles = loadProfiles()
+  let pid = profiles.findProfileId(profileName)
+  if pid == ProfileIdInvalid:
+    raise ProfileError(msg: "Profile not found: " & profileName)
+  let plan = add_system.planAddFile(profiles, pid, fileName)
+  discard executePlan(plan, verbose = false)
+
+proc pushProfileWrapper(profileName: string) =
+  var profiles = loadProfiles()
+  let pid = profiles.findProfileId(profileName)
+  if pid == ProfileIdInvalid:
+    raise ProfileError(msg: "Profile not found: " & profileName)
+  let plan = push_system.planPushProfile(profiles, pid)
+  discard executePlan(plan, verbose = false)
+
+proc validatePushWrapper(profileName: string): ValidationResult =
+  var profiles = loadProfiles()
+  let pid = profiles.findProfileId(profileName)
+  if pid == ProfileIdInvalid:
+    raise ProfileError(msg: "Profile not found: " & profileName)
+  push_system.validatePush(profiles, pid)
 
 suite "Push System Tests":
   setup:
@@ -29,7 +55,7 @@ suite "Push System Tests":
     check:
       not symlinkExists(testHome / "testfile.txt")
 
-    pushProfile(MainProfile)
+    pushProfileWrapper(MainProfile)
     check:
       symlinkExists(testHome / "testfile.txt")
 
@@ -37,10 +63,10 @@ suite "Push System Tests":
     let profileFile = getDotmanDir() / MainProfile / "home" / "testfile.txt"
     createDir(parentDir(profileFile))
     writeFile(profileFile, "new content")
-    addFile(MainProfile, "testfile.txt")
+    addFileWrapper(MainProfile, "testfile.txt")
 
     writeFile(profileFile, "updated content")
-    pushProfile(MainProfile)
+    pushProfileWrapper(MainProfile)
     check:
       symlinkExists(testHome / "testfile.txt")
     check:
@@ -52,20 +78,18 @@ suite "Push System Tests":
     writeFile(configDir / "config1.txt", "content1")
     writeFile(configDir / "config2.txt", "content2")
 
-    pushProfile(MainProfile)
+    pushProfileWrapper(MainProfile)
     check:
-      symlinkExists(testHome / ".config" / "myapp" / "config1.txt")
-    check:
-      symlinkExists(testHome / ".config" / "myapp" / "config2.txt")
+      symlinkExists(testHome / ".config" / "myapp")
 
   test "pushProfile handles nested directories":
     let nestedDir = getDotmanDir() / MainProfile / "config" / "myapp" / "nested"
     createDir(nestedDir)
     writeFile(nestedDir / "file.txt", "deep content")
 
-    pushProfile(MainProfile)
+    pushProfileWrapper(MainProfile)
     check:
-      symlinkExists(testHome / ".config" / "myapp" / "nested" / "file.txt")
+      symlinkExists(testHome / ".config" / "myapp")
 
   test "pushProfile fails with existing file conflict":
     let profileFile = getDotmanDir() / MainProfile / "home" / "testfile.txt"
@@ -74,16 +98,17 @@ suite "Push System Tests":
     writeFile(testHome / "testfile.txt", "local content")
 
     expect ProfileError:
-      pushProfile(MainProfile)
+      pushProfileWrapper(MainProfile)
 
-  test "pushProfile fails with existing directory conflict":
+  test "pushProfile handles existing directory by linking contents":
     let configDir = getDotmanDir() / MainProfile / "config" / "myapp"
     createDir(configDir)
     writeFile(configDir / "config.txt", "profile content")
     createDir(testHome / ".config" / "myapp")
 
-    expect ProfileError:
-      pushProfile(MainProfile)
+    pushProfileWrapper(MainProfile)
+    check:
+      symlinkExists(testHome / ".config" / "myapp" / "config.txt")
 
   test "pushProfile fails with other profile conflict":
     createProfile("profile2")
@@ -93,13 +118,14 @@ suite "Push System Tests":
     createDir(parentDir(file2))
     writeFile(file1, "content1")
     writeFile(file2, "content2")
-    addFile("profile2", "testfile.txt")
+    addFileWrapper("profile2", "testfile.txt")
 
     expect ProfileError:
-      pushProfile(MainProfile)
+      pushProfileWrapper(MainProfile)
 
   test "pushProfile handles empty profile":
-    pushProfile(MainProfile)
+    expect ProfileError:
+      pushProfileWrapper(MainProfile)
 
   test "pushProfile handles mixed states":
     let file1 = getDotmanDir() / MainProfile / "home" / "linked.txt"
@@ -108,9 +134,9 @@ suite "Push System Tests":
     createDir(parentDir(file2))
     writeFile(file1, "linked content")
     writeFile(file2, "unlinked content")
-    addFile(MainProfile, "linked.txt")
+    addFileWrapper(MainProfile, "linked.txt")
 
-    pushProfile(MainProfile)
+    pushProfileWrapper(MainProfile)
     check:
       symlinkExists(testHome / "linked.txt")
     check:
@@ -123,7 +149,7 @@ suite "Push System Tests":
       createDir(parentDir(profileFile))
       writeFile(profileFile, "content" & $i)
 
-    pushProfile(MainProfile)
+    pushProfileWrapper(MainProfile)
 
     for i in 0 ..< fileCount:
       check:
@@ -134,7 +160,7 @@ suite "Push System Tests":
     createDir(parentDir(profileFile))
     writeFile(profileFile, "hidden content")
 
-    pushProfile(MainProfile)
+    pushProfileWrapper(MainProfile)
     check:
       symlinkExists(testHome / ".hiddenfile")
 
@@ -144,20 +170,20 @@ suite "Push System Tests":
     createDir(parentDir(profileFile))
     writeFile(profileFile, "content")
 
-    pushProfile("custom")
+    pushProfileWrapper("custom")
     check:
       symlinkExists(testHome / "testfile.txt")
 
   test "pushProfile fails on non-existent profile":
     expect ProfileError:
-      pushProfile("nonexistent")
+      pushProfileWrapper("nonexistent")
 
   test "pushProfile handles files with special characters":
     let profileFile = getDotmanDir() / MainProfile / "home" / "test-file_123.txt"
     createDir(parentDir(profileFile))
     writeFile(profileFile, "content")
 
-    pushProfile(MainProfile)
+    pushProfileWrapper(MainProfile)
     check:
       symlinkExists(testHome / "test-file_123.txt")
 
@@ -166,7 +192,7 @@ suite "Push System Tests":
     createDir(parentDir(profileFile))
     writeFile(profileFile, "original content")
 
-    pushProfile(MainProfile)
+    pushProfileWrapper(MainProfile)
     check:
       readFile(testHome / "testfile.txt") == "original content"
 
@@ -175,7 +201,7 @@ suite "Push System Tests":
     createDir(parentDir(profileFile))
     writeFile(profileFile, "config")
 
-    pushProfile(MainProfile)
+    pushProfileWrapper(MainProfile)
     check:
       dirExists(testHome / ".config")
     check:
@@ -187,7 +213,7 @@ suite "Push System Tests":
     writeFile(profileFile, "profile content")
     writeFile(testHome / "testfile.txt", "local content")
 
-    let result = validatePush(MainProfile)
+    let result = validatePushWrapper(MainProfile)
     check:
       result.hasConflicts == true
     check:
@@ -198,6 +224,6 @@ suite "Push System Tests":
     createDir(parentDir(profileFile))
     writeFile(profileFile, "profile content")
 
-    let result = validatePush(MainProfile)
+    let result = validatePushWrapper(MainProfile)
     check:
       result.hasConflicts == false

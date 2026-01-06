@@ -1,6 +1,6 @@
 import std/os
 import ../components/batches
-import ../components/profiles
+import ../core/result
 import path_resolution
 
 proc createLink*(source: string, dest: string) =

@@ -1,7 +1,6 @@
 import std/[os, strutils, sequtils]
-import ../core/path
+import ../core/[types, result, execution]
 import ../components/profiles
-import symlink_ops
 
 proc inferCategoryFromHome*(
     homePath: string
@@ -59,11 +58,14 @@ proc countFilesInDir*(path: string): int =
     if kind == pcFile:
       result += 1
 
-proc moveFileToProfile*(profile: string, homePath: string) =
-  let profileDir = getDotmanDir() / profile
+proc planMoveFileToProfile*(
+    profiles: ProfileData, profileId: ProfileId, homePath: string
+): ExecutionPlan =
+  let profileDir = profiles.getProfilePath(profileId)
+  let profileName = profiles.names[int32(profileId)].data
 
   if not dirExists(profileDir):
-    raise ProfileError(msg: "Profile not found: " & profile)
+    raise ProfileError(msg: "Profile not found: " & profileName)
 
   if symlinkExists(homePath):
     raise ProfileError(msg: "File is a symlink. Use 'add' instead")
@@ -79,18 +81,15 @@ proc moveFileToProfile*(profile: string, homePath: string) =
     raise ProfileError(msg: "Already exists in profile: " & relPath)
 
   if fileExists(homePath) or dirExists(homePath):
+    result = initExecutionPlan(2)
+
     if dirExists(homePath):
-      let count = countFilesInDir(homePath)
-      if count > 20:
-        echo "Large directory (" & $count & " files). Moving..."
-
-      createDir(destDir)
-      moveDir(homePath, destPath)
+      result.addCreateDir(destPath.parentDir)
+      result.addMoveDir(homePath, destPath)
     else:
-      createDir(destDir)
-      moveFile(homePath, destPath)
+      result.addCreateDir(destPath.parentDir)
+      result.addMoveFile(homePath, destPath)
 
-    symlink_ops.createLink(destPath, homePath)
-    echo "Set: " & homePath & " → " & destPath
+    result.addCreateSymlink(destPath, homePath)
   else:
     raise ProfileError(msg: "File not found: " & homePath)

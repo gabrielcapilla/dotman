@@ -1,5 +1,6 @@
 import std/[os, strutils]
-import ../components/status
+import ../core/types
+import ../components/[status, profiles]
 import path_resolution
 
 type ScanConfig* = object
@@ -47,7 +48,10 @@ proc determineStatus*(fullPath, homePath, profileDir: string): LinkStatus =
     return Conflict
   return NotLinked
 
-proc scanProfile*(profileDir: string, config: ScanConfig): StatusData =
+proc scanProfile*(
+    profiles: ProfileData, profileId: ProfileId, config: ScanConfig
+): StatusData =
+  let profileDir = profiles.getProfilePath(profileId)
   let estimatedFiles = estimateFileCount(profileDir)
   result = initStatusData(estimatedFiles)
 
@@ -70,6 +74,6 @@ proc scanProfile*(profileDir: string, config: ScanConfig): StatusData =
           result.addStatusEntry(relPath, homePath, status)
           fileCount += 1
 
-proc scanProfileSimple*(profileDir: string): StatusData =
+proc scanProfileSimple*(profiles: ProfileData, profileId: ProfileId): StatusData =
   let config = ScanConfig(maxDepth: 10, maxFiles: 8192)
-  scanProfile(profileDir, config)
+  scanProfile(profiles, profileId, config)

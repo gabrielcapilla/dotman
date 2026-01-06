@@ -3,9 +3,28 @@ import ../src/systems/status_system
 import ../src/systems/scan_system
 import ../src/systems/profile_ops
 import ../src/systems/add_system
+import ../src/systems/execution_engine
 import ../src/core/path
 import ../src/core/types
+import ../src/core/result
 import ../src/components/profiles
+import ../src/components/status
+
+# Helper wrapper to adapt tests to new API
+proc addFileWrapper(profileName: string, fileName: string) =
+  var profiles = loadProfiles()
+  let pid = profiles.findProfileId(profileName)
+  if pid == ProfileIdInvalid:
+    raise ProfileError(msg: "Profile not found: " & profileName)
+  let plan = add_system.planAddFile(profiles, pid, fileName)
+  discard executePlan(plan, verbose = false)
+
+proc scanProfileSimpleWrapper(profileName: string): StatusData =
+  var profiles = loadProfiles()
+  let pid = profiles.findProfileId(profileName)
+  if pid == ProfileIdInvalid:
+    raise ProfileError(msg: "Profile not found: " & profileName)
+  scan_system.scanProfileSimple(profiles, pid)
 
 suite "Status System Tests":
   setup:
@@ -24,7 +43,7 @@ suite "Status System Tests":
     removeDir(tempDir)
 
   test "scanProfileSimple returns empty for empty profile":
-    let report = scanProfileSimple(getDotmanDir() / MainProfile)
+    let report = scanProfileSimpleWrapper(MainProfile)
     check:
       report.count == 0
     check:
@@ -38,7 +57,7 @@ suite "Status System Tests":
     let profileFile = getDotmanDir() / MainProfile / "home" / "testfile.txt"
     createDir(parentDir(profileFile))
     writeFile(profileFile, "content")
-    let report = scanProfileSimple(getDotmanDir() / MainProfile)
+    let report = scanProfileSimpleWrapper(MainProfile)
     check:
       report.count == 1
     check:
@@ -50,8 +69,8 @@ suite "Status System Tests":
     let profileFile = getDotmanDir() / MainProfile / "home" / "testfile.txt"
     createDir(parentDir(profileFile))
     writeFile(profileFile, "content")
-    addFile(MainProfile, "testfile.txt")
-    let report = scanProfileSimple(getDotmanDir() / MainProfile)
+    addFileWrapper(MainProfile, "testfile.txt")
+    let report = scanProfileSimpleWrapper(MainProfile)
     check:
       report.count == 1
     check:
@@ -64,7 +83,7 @@ suite "Status System Tests":
     createDir(parentDir(profileFile))
     writeFile(profileFile, "profile content")
     writeFile(testHome / "testfile.txt", "local content")
-    let report = scanProfileSimple(getDotmanDir() / MainProfile)
+    let report = scanProfileSimpleWrapper(MainProfile)
     check:
       report.count == 1
     check:
@@ -80,8 +99,8 @@ suite "Status System Tests":
     createDir(parentDir(file2))
     writeFile(file1, "content1")
     writeFile(file2, "content2")
-    addFile("profile2", "testfile.txt")
-    let report = scanProfileSimple(getDotmanDir() / MainProfile)
+    addFileWrapper("profile2", "testfile.txt")
+    let report = scanProfileSimpleWrapper(MainProfile)
     check:
       report.count == 1
     check:
@@ -93,7 +112,7 @@ suite "Status System Tests":
       createDir(parentDir(profileFile))
       writeFile(profileFile, "content" & $i)
 
-    let report = scanProfileSimple(getDotmanDir() / MainProfile)
+    let report = scanProfileSimpleWrapper(MainProfile)
     check:
       report.count == 5
     check:
@@ -106,25 +125,15 @@ suite "Status System Tests":
     createDir(parentDir(file2))
     writeFile(file1, "linked content")
     writeFile(file2, "unlinked content")
-    addFile(MainProfile, "linked.txt")
+    addFileWrapper(MainProfile, "linked.txt")
 
-    let report = scanProfileSimple(getDotmanDir() / MainProfile)
+    let report = scanProfileSimpleWrapper(MainProfile)
     check:
       report.count == 2
     check:
       report.linked == 1
     check:
       report.notLinked == 1
-
-  test "showStatus works on existing profile":
-    let profileFile = getDotmanDir() / MainProfile / "home" / "testfile.txt"
-    createDir(parentDir(profileFile))
-    writeFile(profileFile, "content")
-    showStatus(MainProfile)
-
-  test "showStatus fails on non-existent profile":
-    expect ProfileError:
-      showStatus("nonexistent")
 
   test "scanProfileSimple counts correctly with many files":
     const fileCount = 100
@@ -133,7 +142,7 @@ suite "Status System Tests":
       createDir(parentDir(profileFile))
       writeFile(profileFile, "content" & $i)
 
-    let report = scanProfileSimple(getDotmanDir() / MainProfile)
+    let report = scanProfileSimpleWrapper(MainProfile)
     check:
       report.count == fileCount
     check:
@@ -143,8 +152,8 @@ suite "Status System Tests":
     let profileFile = getDotmanDir() / MainProfile / "config" / "myapp.conf"
     createDir(parentDir(profileFile))
     writeFile(profileFile, "content")
-    addFile(MainProfile, "myapp.conf")
+    addFileWrapper(MainProfile, "myapp.conf")
 
-    let report = scanProfileSimple(getDotmanDir() / MainProfile)
+    let report = scanProfileSimpleWrapper(MainProfile)
     check:
       "config/myapp.conf" in report.relPaths

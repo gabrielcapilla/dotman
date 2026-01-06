@@ -1,19 +1,7 @@
 import std/strutils
+import ../core/types
 
 type
-  LinkStatus* = enum
-    Linked
-    NotLinked
-    Conflict
-    OtherProfile
-
-  Category* = enum
-    Config
-    Share
-    Home
-    Local
-    Bin
-
   CategoryStats* = object
     linked*: int
     notLinked*: int
@@ -29,21 +17,6 @@ type
     relPaths*: seq[string]
     homePaths*: seq[string]
     statuses*: seq[LinkStatus]
-
-  StatusReport* = object
-    linked*: int
-    notLinked*: int
-    conflicts*: int
-    relPaths*: seq[string]
-    homePaths*: seq[string]
-    statuses*: seq[LinkStatus]
-
-  StatusFilter* = enum
-    FilterAll
-    FilterLinked
-    FilterNotLinked
-    FilterConflicts
-    FilterOther
 
 proc initStatusData*(capacity: int = 8192): StatusData =
   StatusData(

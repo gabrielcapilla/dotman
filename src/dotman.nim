@@ -1,13 +1,11 @@
-import std/[parseopt, os, options]
-import core/[help, types, path]
-import
-  systems/[
-    cli_ops, add_system, remove_system, set_system, unset_system, status_system,
-    push_system, pull_system, scan_system, profile_ops,
-  ]
-import components/[profiles, status]
+import components/profiles
+import std/[parseopt, options, os]
+import systems/[status_display, scan_system, command_dispatcher]
+import core/[types, path, state, colors, command_parser, result, completion]
 
-proc parseStatusFlags*(p: var OptParser, currentProfile: string) =
+proc parseStatusFlags*(
+    p: var OptParser, profiles: ProfileData, currentProfile: string
+) =
   var profile = currentProfile
   var filter = FilterAll
   var category: Option[Category] = none(Category)
@@ -30,21 +28,21 @@ proc parseStatusFlags*(p: var OptParser, currentProfile: string) =
       of "category":
         if p.val.len == 0:
           p.next()
-        let catName = if p.val.len == 0: p.key else: p.val
-        case catName
-        of "config":
-          category = some(Config)
-        of "share":
-          category = some(Share)
-        of "home":
-          category = some(Home)
-        of "local":
-          category = some(Local)
-        of "bin":
-          category = some(Bin)
-        else:
-          echo "Unknown category: " & catName
-          quit(1)
+          let catName = if p.val.len == 0: p.key else: p.val
+          case catName
+          of "config":
+            category = some(Config)
+          of "share":
+            category = some(Share)
+          of "home":
+            category = some(Home)
+          of "local":
+            category = some(Local)
+          of "bin":
+            category = some(Bin)
+          else:
+            echo "Unknown category: " & catName
+            quit(1)
       of "conflicts":
         filter = FilterConflicts
       of "linked":
@@ -61,150 +59,42 @@ proc parseStatusFlags*(p: var OptParser, currentProfile: string) =
         echo "Unknown option for status: " & p.key
         quit(1)
     of cmdArgument:
-      echo "Unexpected argument: " & p.key
+      colors.actionError("Unexpected argument: " & p.key)
       quit(1)
 
-  let profileDir = getDotmanDir() / profile
-  if not dirExists(profileDir):
+  let profileId = profiles.findProfileId(profile)
+  if profileId == ProfileIdInvalid:
+    if not dirExists(getDotmanDir()):
+      echo "Error: Not initialized. Run 'dotman init' first."
+      quit(1)
     raise ProfileError(msg: "Profile not found: " & profile)
 
-  let data = scanProfileSimple(profileDir)
+  let data = scanProfileSimple(profiles, profileId)
 
   if filter == FilterAll:
-    status_system.showCategorySummary(
+    status_display.showCategorySummary(
       data, profile, useAscii = useAscii, category = category, verbose = verbose
     )
   else:
-    status_system.showDetailedReport(data, profile, filter, category)
-
-proc parseCli*() =
-  var p = initOptParser()
-  var currentProfile = MainProfile
-  var command = ""
-  var deleteProfileName = ""
-
-  if paramCount() == 0:
-    help.showHelp()
-    return
-
-  while true:
-    p.next()
-    case p.kind
-    of cmdEnd:
-      break
-    of cmdShortOption, cmdLongOption:
-      if p.key == "delete-profile":
-        if p.val.len == 0:
-          p.next()
-          deleteProfileName = p.key
-        else:
-          deleteProfileName = p.val
-
-        profile_ops.removeProfile(deleteProfileName)
-        echo "Removed profile: " & deleteProfileName
-        quit(0)
-    of cmdArgument:
-      break
-
-  p = initOptParser()
-
-  while true:
-    p.next()
-    case p.kind
-    of cmdEnd:
-      break
-    of cmdShortOption, cmdLongOption:
-      let key = p.key
-      let val = p.val
-
-      case key
-      of "i", "init":
-        cli_ops.runInit()
-      of "m", "make":
-        if val.len == 0:
-          p.next()
-        cli_ops.runProfileCreate(if val.len == 0: p.key else: val)
-      of "c", "clone":
-        if val.len == 0:
-          p.next()
-        let src = if val.len == 0: p.key else: val
-        p.next()
-        cli_ops.runProfileClone(src, p.key)
-      of "r", "remove":
-        if val.len > 0:
-          remove_system.removeFile(currentProfile, val)
-      of "l", "list":
-        cli_ops.runProfileList()
-      of "a", "add":
-        if val.len == 0:
-          p.next()
-        add_system.addFile(currentProfile, if val.len == 0: p.key else: val)
-      of "s", "set":
-        if val.len == 0:
-          p.next()
-        set_system.moveFileToProfile(currentProfile, if val.len == 0: p.key else: val)
-      of "u", "unset":
-        if val.len == 0:
-          p.next()
-        unset_system.unsetFile(currentProfile, if val.len == 0: p.key else: val)
-      of "profile":
-        if val.len == 0:
-          p.next()
-        currentProfile = if val.len == 0: p.key else: val
-      of "help", "h":
-        help.showHelp()
-      of "v", "version":
-        help.showVersion()
-      else:
-        echo "Unknown option: " & key
-        quit(1)
-    of cmdArgument:
-      if command == "":
-        command = p.key
-        case command
-        of "init":
-          cli_ops.runInit()
-        of "make":
-          p.next()
-          cli_ops.runProfileCreate(p.key)
-        of "clone":
-          p.next()
-          let src = p.key
-          p.next()
-          cli_ops.runProfileClone(src, p.key)
-        of "remove":
-          p.next()
-          remove_system.removeFile(currentProfile, p.key)
-        of "list":
-          cli_ops.runProfileList()
-        of "add":
-          p.next()
-          add_system.addFile(currentProfile, p.key)
-        of "set":
-          p.next()
-          set_system.moveFileToProfile(currentProfile, p.key)
-        of "unset":
-          p.next()
-          unset_system.unsetFile(currentProfile, p.key)
-        of "status":
-          parseStatusFlags(p, currentProfile)
-        of "push":
-          p.next()
-          push_system.pushProfile(p.key)
-        of "pull":
-          p.next()
-          pull_system.pullProfile(p.key)
-        of "help":
-          help.showHelp()
-        of "version":
-          help.showVersion()
-        else:
-          echo "Unknown command: " & command
-          quit(1)
+    status_display.showDetailedReport(data, profile, filter, category)
 
 when isMainModule:
   try:
-    parseCli()
+    let parsed = command_parser.parseCommand()
+
+    if parsed.command == CmdDeleteProfile:
+      executeDeleteProfile(parsed.deleteProfileName)
+      quit(0)
+
+    if parsed.command == CmdCompletion:
+      completion.printCompletion(parsed.completionKind)
+      quit(0)
+
+    let initialProfiles = loadProfiles()
+    let initialProfileId = initialProfiles.findProfileId(MainProfile)
+    var appState = initAppState(initialProfiles, initialProfileId)
+
+    command_dispatcher.dispatch(parsed, appState)
   except ProfileError as e:
     echo "Error: " & e.msg
     quit(1)

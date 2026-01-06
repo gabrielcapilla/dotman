@@ -2,9 +2,36 @@ import std/[os, unittest, tempfiles]
 import ../src/systems/pull_system
 import ../src/systems/profile_ops
 import ../src/systems/add_system
+import ../src/systems/execution_engine
 import ../src/core/path
 import ../src/core/types
+import ../src/core/result
 import ../src/components/profiles
+import ../src/components/batches
+
+# Helper wrappers to adapt tests to new API
+proc addFileWrapper(profileName: string, fileName: string) =
+  var profiles = loadProfiles()
+  let pid = profiles.findProfileId(profileName)
+  if pid == ProfileIdInvalid:
+    raise ProfileError(msg: "Profile not found: " & profileName)
+  let plan = add_system.planAddFile(profiles, pid, fileName)
+  discard executePlan(plan, verbose = false)
+
+proc pullProfileWrapper(profileName: string) =
+  var profiles = loadProfiles()
+  let pid = profiles.findProfileId(profileName)
+  if pid == ProfileIdInvalid:
+    raise ProfileError(msg: "Profile not found: " & profileName)
+  let plan = pull_system.planPullProfile(profiles, pid)
+  discard executePlan(plan, verbose = false)
+
+proc validatePullWrapper(profileName: string): FileBatch =
+  var profiles = loadProfiles()
+  let pid = profiles.findProfileId(profileName)
+  if pid == ProfileIdInvalid:
+    raise ProfileError(msg: "Profile not found: " & profileName)
+  pull_system.validatePull(profiles, pid)
 
 suite "Pull System Tests":
   setup:
@@ -26,11 +53,11 @@ suite "Pull System Tests":
     let profileFile = getDotmanDir() / MainProfile / "home" / "testfile.txt"
     createDir(parentDir(profileFile))
     writeFile(profileFile, "profile content")
-    addFile(MainProfile, "testfile.txt")
+    addFileWrapper(MainProfile, "testfile.txt")
     check:
       symlinkExists(testHome / "testfile.txt")
 
-    pullProfile(MainProfile)
+    pullProfileWrapper(MainProfile)
     check:
       not symlinkExists(testHome / "testfile.txt")
 
@@ -39,23 +66,21 @@ suite "Pull System Tests":
     createDir(configDir)
     writeFile(configDir / "config1.txt", "content1")
     writeFile(configDir / "config2.txt", "content2")
-    addFile(MainProfile, "myapp")
+    addFileWrapper(MainProfile, "myapp")
 
     check:
-      symlinkExists(testHome / ".config" / "myapp" / "config1.txt")
-    pullProfile(MainProfile)
+      symlinkExists(testHome / ".config" / "myapp")
+    pullProfileWrapper(MainProfile)
     check:
-      not symlinkExists(testHome / ".config" / "myapp" / "config1.txt")
-    check:
-      not symlinkExists(testHome / ".config" / "myapp" / "config2.txt")
+      not symlinkExists(testHome / ".config" / "myapp")
 
   test "pullProfile handles nested directories":
     let nestedDir = getDotmanDir() / MainProfile / "config" / "myapp" / "nested"
     createDir(nestedDir)
     writeFile(nestedDir / "file.txt", "deep content")
-    addFile(MainProfile, "myapp")
+    addFileWrapper(MainProfile, "myapp")
 
-    pullProfile(MainProfile)
+    pullProfileWrapper(MainProfile)
     check:
       not symlinkExists(testHome / ".config" / "myapp" / "nested" / "file.txt")
 
@@ -63,14 +88,14 @@ suite "Pull System Tests":
     let profileFile = getDotmanDir() / MainProfile / "home" / "managed.txt"
     createDir(parentDir(profileFile))
     writeFile(profileFile, "managed content")
-    addFile(MainProfile, "managed.txt")
+    addFileWrapper(MainProfile, "managed.txt")
 
     let externalFile = testHome / "external.txt"
     writeFile(externalFile, "external")
     let externalLink = testHome / "external_link.txt"
     createSymlink(externalFile, externalLink)
 
-    pullProfile(MainProfile)
+    pullProfileWrapper(MainProfile)
     check:
       not symlinkExists(testHome / "managed.txt")
     check:
@@ -80,28 +105,30 @@ suite "Pull System Tests":
     let profileFile = getDotmanDir() / MainProfile / "home" / "managed.txt"
     createDir(parentDir(profileFile))
     writeFile(profileFile, "managed content")
-    addFile(MainProfile, "managed.txt")
+    addFileWrapper(MainProfile, "managed.txt")
 
     let externalFile = testHome / "external.txt"
     writeFile(externalFile, "external")
     let externalLink = testHome / "external_link.txt"
     createSymlink(externalFile, externalLink)
 
-    pullProfile(MainProfile)
+    pullProfileWrapper(MainProfile)
     check:
       not symlinkExists(testHome / "managed.txt")
     check:
       symlinkExists(externalLink)
 
   test "pullProfile handles empty profile":
-    pullProfile(MainProfile)
+    expect ProfileError:
+      pullProfileWrapper(MainProfile)
 
   test "pullProfile handles profile with unlinked files":
     let profileFile = getDotmanDir() / MainProfile / "home" / "testfile.txt"
     createDir(parentDir(profileFile))
     writeFile(profileFile, "profile content")
 
-    pullProfile(MainProfile)
+    expect ProfileError:
+      pullProfileWrapper(MainProfile)
     check:
       fileExists(profileFile)
 
@@ -111,13 +138,13 @@ suite "Pull System Tests":
       let profileFile = getDotmanDir() / MainProfile / "home" / "file" & $i & ".txt"
       createDir(parentDir(profileFile))
       writeFile(profileFile, "content" & $i)
-      addFile(MainProfile, "file" & $i & ".txt")
+      addFileWrapper(MainProfile, "file" & $i & ".txt")
 
     for i in 0 ..< fileCount:
       check:
         symlinkExists(testHome / "file" & $i & ".txt")
 
-    pullProfile(MainProfile)
+    pullProfileWrapper(MainProfile)
 
     for i in 0 ..< fileCount:
       check:
@@ -127,9 +154,9 @@ suite "Pull System Tests":
     let profileFile = getDotmanDir() / MainProfile / "home" / ".hiddenfile"
     createDir(parentDir(profileFile))
     writeFile(profileFile, "hidden content")
-    addFile(MainProfile, ".hiddenfile")
+    addFileWrapper(MainProfile, ".hiddenfile")
 
-    pullProfile(MainProfile)
+    pullProfileWrapper(MainProfile)
     check:
       not symlinkExists(testHome / ".hiddenfile")
 
@@ -138,15 +165,15 @@ suite "Pull System Tests":
     let profileFile = getDotmanDir() / "custom" / "home" / "testfile.txt"
     createDir(parentDir(profileFile))
     writeFile(profileFile, "content")
-    addFile("custom", "testfile.txt")
+    addFileWrapper("custom", "testfile.txt")
 
-    pullProfile("custom")
+    pullProfileWrapper("custom")
     check:
       not symlinkExists(testHome / "testfile.txt")
 
   test "pullProfile fails on non-existent profile":
     expect ProfileError:
-      pullProfile("nonexistent")
+      pullProfileWrapper("nonexistent")
 
   test "pullProfile does not affect other profile symlinks":
     createProfile("profile2")
@@ -156,10 +183,10 @@ suite "Pull System Tests":
     createDir(parentDir(file2))
     writeFile(file1, "content1")
     writeFile(file2, "content2")
-    addFile(MainProfile, "file1.txt")
-    addFile("profile2", "file2.txt")
+    addFileWrapper(MainProfile, "file1.txt")
+    addFileWrapper("profile2", "file2.txt")
 
-    pullProfile(MainProfile)
+    pullProfileWrapper(MainProfile)
     check:
       not symlinkExists(testHome / "file1.txt")
     check:
@@ -169,9 +196,9 @@ suite "Pull System Tests":
     let profileFile = getDotmanDir() / MainProfile / "home" / "test-file_123.txt"
     createDir(parentDir(profileFile))
     writeFile(profileFile, "content")
-    addFile(MainProfile, "test-file_123.txt")
+    addFileWrapper(MainProfile, "test-file_123.txt")
 
-    pullProfile(MainProfile)
+    pullProfileWrapper(MainProfile)
     check:
       not symlinkExists(testHome / "test-file_123.txt")
 
@@ -179,18 +206,19 @@ suite "Pull System Tests":
     let profileFile = getDotmanDir() / MainProfile / "home" / "testfile.txt"
     createDir(parentDir(profileFile))
     writeFile(profileFile, "content")
-    addFile(MainProfile, "testfile.txt")
+    addFileWrapper(MainProfile, "testfile.txt")
 
-    pullProfile(MainProfile)
-    pullProfile(MainProfile)
+    pullProfileWrapper(MainProfile)
+    expect ProfileError:
+      pullProfileWrapper(MainProfile)
 
   test "validatePull finds all managed symlinks":
     let profileFile = getDotmanDir() / MainProfile / "home" / "testfile.txt"
     createDir(parentDir(profileFile))
     writeFile(profileFile, "profile content")
-    addFile(MainProfile, "testfile.txt")
+    addFileWrapper(MainProfile, "testfile.txt")
 
-    let result = validatePull(MainProfile)
+    let result = validatePullWrapper(MainProfile)
     check:
       result.count == 1
     check:
@@ -201,7 +229,7 @@ suite "Pull System Tests":
     createDir(parentDir(profileFile))
     writeFile(profileFile, "profile content")
 
-    let result = validatePull(MainProfile)
+    let result = validatePullWrapper(MainProfile)
     check:
       result.count == 0
 
@@ -211,7 +239,7 @@ suite "Pull System Tests":
     let externalLink = testHome / "external_link.txt"
     createSymlink(externalFile, externalLink)
 
-    let result = validatePull(MainProfile)
+    let result = validatePullWrapper(MainProfile)
     check:
       result.count == 0
 
@@ -219,9 +247,9 @@ suite "Pull System Tests":
     let binDir = getDotmanDir() / MainProfile / "bin"
     createDir(binDir)
     writeFile(binDir / "mytool", "tool content")
-    addFile(MainProfile, "mytool")
+    addFileWrapper(MainProfile, "mytool")
 
-    pullProfile(MainProfile)
+    pullProfileWrapper(MainProfile)
     check:
       not symlinkExists(testHome / ".local" / "bin" / "mytool")
 
@@ -229,8 +257,8 @@ suite "Pull System Tests":
     let shareDir = getDotmanDir() / MainProfile / "share"
     createDir(shareDir)
     writeFile(shareDir / "data.txt", "data")
-    addFile(MainProfile, "data.txt")
+    addFileWrapper(MainProfile, "data.txt")
 
-    pullProfile(MainProfile)
+    pullProfileWrapper(MainProfile)
     check:
       not symlinkExists(testHome / ".local" / "share" / "data.txt")

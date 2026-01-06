@@ -1,9 +1,20 @@
 import std/[os, unittest, tempfiles]
 import ../src/systems/set_system
 import ../src/systems/profile_ops
+import ../src/systems/execution_engine
 import ../src/core/path
 import ../src/core/types
+import ../src/core/result
 import ../src/components/profiles
+
+# Helper wrapper to adapt tests to new API
+proc moveFileToProfileWrapper(profileName: string, homePath: string) =
+  var profiles = loadProfiles()
+  let pid = profiles.findProfileId(profileName)
+  if pid == ProfileIdInvalid:
+    raise ProfileError(msg: "Profile not found: " & profileName)
+  let plan = set_system.planMoveFileToProfile(profiles, pid, homePath)
+  discard executePlan(plan, verbose = false)
 
 suite "Set System Tests":
   setup:
@@ -24,7 +35,7 @@ suite "Set System Tests":
   test "moveFileToProfile moves file to home category":
     let testFile = testHome / "testfile.txt"
     writeFile(testFile, "test content")
-    moveFileToProfile(MainProfile, testFile)
+    moveFileToProfileWrapper(MainProfile, testFile)
     check:
       symlinkExists(testFile)
     check:
@@ -37,7 +48,7 @@ suite "Set System Tests":
     createDir(configDir)
     let testFile = configDir / "myapp.conf"
     writeFile(testFile, "config content")
-    moveFileToProfile(MainProfile, testFile)
+    moveFileToProfileWrapper(MainProfile, testFile)
     check:
       symlinkExists(testFile)
     check:
@@ -50,7 +61,7 @@ suite "Set System Tests":
     createDir(binDir)
     let testFile = binDir / "mytool"
     writeFile(testFile, "#!/bin/bash\necho test")
-    moveFileToProfile(MainProfile, testFile)
+    moveFileToProfileWrapper(MainProfile, testFile)
     check:
       symlinkExists(testFile)
     check:
@@ -61,7 +72,7 @@ suite "Set System Tests":
     createDir(shareDir)
     let testFile = shareDir / "data.txt"
     writeFile(testFile, "data")
-    moveFileToProfile(MainProfile, testFile)
+    moveFileToProfileWrapper(MainProfile, testFile)
     check:
       symlinkExists(testFile)
     check:
@@ -72,7 +83,7 @@ suite "Set System Tests":
     createDir(configDir)
     writeFile(configDir / "config1.txt", "content1")
     writeFile(configDir / "config2.txt", "content2")
-    moveFileToProfile(MainProfile, configDir)
+    moveFileToProfileWrapper(MainProfile, configDir)
     check:
       symlinkExists(configDir)
     check:
@@ -85,46 +96,60 @@ suite "Set System Tests":
   test "moveFileToProfile fails with existing symlink":
     let testFile = testHome / "testfile.txt"
     writeFile(testFile, "original")
-    moveFileToProfile(MainProfile, testFile)
+    moveFileToProfileWrapper(MainProfile, testFile)
     expect ProfileError:
-      moveFileToProfile(MainProfile, testFile)
+      moveFileToProfileWrapper(MainProfile, testFile)
 
   test "moveFileToProfile fails if file not found":
     let testFile = testHome / "nonexistent.txt"
     expect ProfileError:
-      moveFileToProfile(MainProfile, testFile)
+      moveFileToProfileWrapper(MainProfile, testFile)
 
   test "moveFileToProfile fails if profile not found":
     let testFile = testHome / "testfile.txt"
     writeFile(testFile, "content")
     expect ProfileError:
-      moveFileToProfile("nonexistent", testFile)
+      moveFileToProfileWrapper("nonexistent", testFile)
 
   test "moveFileToProfile fails if already exists in profile":
     let testFile = testHome / "testfile.txt"
     writeFile(testFile, "content1")
-    moveFileToProfile(MainProfile, testFile)
+    moveFileToProfileWrapper(MainProfile, testFile)
     writeFile(testFile, "content2")
     expect ProfileError:
-      moveFileToProfile(MainProfile, testFile)
+      moveFileToProfileWrapper(MainProfile, testFile)
 
   test "moveFileToProfile fails if file not in HOME":
     let testFile = "/tmp/testfile.txt"
     writeFile(testFile, "content")
     expect ProfileError:
-      moveFileToProfile(MainProfile, testFile)
+      moveFileToProfileWrapper(MainProfile, testFile)
     removeFile(testFile)
 
   test "moveFileToProfile fails if source file not found":
     let testFile = testHome / "nonexistent.txt"
     expect ProfileError:
-      moveFileToProfile(MainProfile, testFile)
+      moveFileToProfileWrapper(MainProfile, testFile)
 
   test "moveFileToProfile handles .hidden directories in home":
     let testFile = testHome / ".hiddenfile"
     writeFile(testFile, "content")
-    moveFileToProfile(MainProfile, testFile)
+    moveFileToProfileWrapper(MainProfile, testFile)
     check:
       symlinkExists(testFile)
     check:
       fileExists(getDotmanDir() / MainProfile / "home" / ".hiddenfile")
+
+  test "moveFileToProfile handles deep paths in category":
+    let deepDir = testHome / ".local" / "share" / "fonts"
+    createDir(deepDir)
+    let testFile = deepDir / "Monaspace"
+    writeFile(testFile, "font data")
+
+    moveFileToProfileWrapper(MainProfile, testFile)
+
+    check:
+      symlinkExists(testFile)
+    check:
+      expandSymlink(testFile) ==
+        (getDotmanDir() / MainProfile / "share" / "fonts" / "Monaspace")

@@ -1,14 +1,14 @@
 import std/os
-import ../core/path
-import ../components/batches
-import ../components/profiles
-import symlink_ops
-import validation_system
+import ../core/[types, result, execution]
+import ../components/[batches, profiles]
+import symlink_ops, validation_system
 
-proc findFileInProfile*(profile: string, name: string): string =
-  let profileDir = getDotmanDir() / profile
+proc findFileInProfile*(
+    profiles: ProfileData, profileId: ProfileId, name: string
+): string =
+  let profileDir = profiles.getProfilePath(profileId)
   if not dirExists(profileDir):
-    raise ProfileError(msg: "Profile not found: " & profile)
+    raise ProfileError(msg: "Profile directory not found: " & profileDir)
 
   for kind, categoryPath in walkDir(profileDir, relative = true):
     if kind == pcDir:
@@ -22,7 +22,7 @@ proc findFileInProfile*(profile: string, name: string): string =
     if kind == pcDir:
       let catDir = profileDir / categoryPath
 
-      for itemPath in walkDirRec(catDir, relative = true):
+      for itemPath in walkDirRec(catDir, yieldFilter = {pcFile, pcDir}, relative = true):
         let fullPath = catDir / itemPath
 
         if dirExists(fullPath):
@@ -37,19 +37,19 @@ proc findFileInProfile*(profile: string, name: string): string =
 
   raise ProfileError(msg: "File not found in profile: " & name)
 
-proc addFile*(profile: string, name: string) =
-  let profileDir = getDotmanDir() / profile
-  let relPath = findFileInProfile(profile, name)
+proc planAddFile*(
+    profiles: ProfileData, profileId: ProfileId, name: string
+): ExecutionPlan =
+  let profileDir = profiles.getProfilePath(profileId)
+  let relPath = findFileInProfile(profiles, profileId, name)
 
   var batch = initFileBatch(1024)
 
   createSymlinksRecursive(profileDir, relPath, batch)
 
   if batch.count == 0:
-    echo "Warning: No files found to link for '" & name & "'"
-    return
+    raise ProfileError(msg: "No files found to link for '" & name & "'")
 
-  echo "Validating links..."
   let validationResult = validateBatch(batch, profileDir)
 
   if validationResult.hasConflicts:
@@ -57,9 +57,8 @@ proc addFile*(profile: string, name: string) =
       let error = validationResult.errors[i]
       raise ProfileError(msg: "Conflict: " & error.path & " (" & error.reason & ")")
 
-  echo "Creating symlinks..."
+  result = initExecutionPlan(batch.count)
   for i in 0 ..< batch.count:
     let source = batch.sources[i]
     let dest = batch.destinations[i]
-    createLink(source, dest)
-    echo "  Linked: " & dest & " → " & source
+    result.addCreateSymlink(source, dest)

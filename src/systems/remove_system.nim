@@ -1,18 +1,14 @@
 import std/os
-import ../core/path
-import ../components/batches
-import ../components/profiles
-import symlink_ops
-import add_system
-import path_resolution
+import ../core/[types, result, execution]
+import ../components/[batches, profiles]
+import symlink_ops, add_system, path_resolution
 
-proc removeFile*(profile: string, name: string) =
-  let profileDir = getDotmanDir() / profile
+proc planRemoveFile*(
+    profiles: ProfileData, profileId: ProfileId, name: string
+): ExecutionPlan =
+  let profileDir = profiles.getProfilePath(profileId)
 
-  if not dirExists(profileDir):
-    raise ProfileError(msg: "Profile not found: " & profile)
-
-  let relPath = findFileInProfile(profile, name)
+  let relPath = findFileInProfile(profiles, profileId, name)
   let fullPath = profileDir / relPath
   let destPath = resolveDestPath(profileDir, relPath)
   var batch = initFileBatch(64)
@@ -27,8 +23,7 @@ proc removeFile*(profile: string, name: string) =
   if batch.count == 0:
     raise ProfileError(msg: "File not found in profile: " & name)
 
+  result = initExecutionPlan(batch.count)
   for i in 0 ..< batch.count:
     let dest = batch.destinations[i]
-    if symlinkExists(dest):
-      removeFile(dest)
-      echo "Removed: " & dest
+    result.addRemoveSymlink(dest)

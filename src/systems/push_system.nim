@@ -1,12 +1,10 @@
 import std/os
-import ../core/path
-import ../components/batches
-import ../components/profiles
-import symlink_ops
-import validation_system
+import ../core/[types, result, execution]
+import ../components/[batches, profiles]
+import symlink_ops, validation_system
 
-proc validatePush*(profile: string): ValidationResult =
-  let profileDir = getDotmanDir() / profile
+proc validatePush*(profiles: ProfileData, profileId: ProfileId): ValidationResult =
+  let profileDir = profiles.getProfilePath(profileId)
   var batch = initFileBatch(1024)
 
   for kind, categoryPath in walkDir(profileDir, relative = true):
@@ -17,15 +15,16 @@ proc validatePush*(profile: string): ValidationResult =
 
   validateBatch(batch, profileDir)
 
-proc pushProfile*(profile: string) =
-  let profileDir = getDotmanDir() / profile
+proc planPushProfile*(profiles: ProfileData, profileId: ProfileId): ExecutionPlan =
+  let profileDir = profiles.getProfilePath(profileId)
+  let profileName = profiles.names[int32(profileId)].data
 
   if not dirExists(profileDir):
-    raise ProfileError(msg: "Profile not found: " & profile)
+    raise ProfileError(msg: "Profile not found: " & profileName)
 
   echo "Validating..."
 
-  let validationResult = validatePush(profile)
+  let validationResult = validatePush(profiles, profileId)
   if validationResult.hasConflicts:
     echo "Error: Cannot push, conflicts found:"
     for i in 0 ..< validationResult.count:
@@ -42,17 +41,10 @@ proc pushProfile*(profile: string) =
         createSymlinksRecursive(profileDir, categoryPath / itemPath, batch)
 
   if batch.count == 0:
-    echo "Warning: No files found in profile '" & profile & "'"
-    echo "Nothing to push."
-    return
+    raise ProfileError(msg: "No files found in profile '" & profileName & "'")
 
-  echo "Creating symlinks..."
-
+  result = initExecutionPlan(batch.count)
   for i in 0 ..< batch.count:
     let source = batch.sources[i]
     let dest = batch.destinations[i]
-    symlink_ops.createLink(source, dest)
-    echo "  Linked " & $(i + 1) & "/" & $batch.count & ": " & dest
-
-  echo ""
-  echo "Done! " & $batch.count & " files linked."
+    result.addCreateSymlink(source, dest)

@@ -1,8 +1,8 @@
 # Package
 
-version = "0.1.0"
-author = "dotman"
-description = "High-performance dotfiles manager"
+version = "0.2.0"
+author = "Gabriel Capilla"
+description = "Modern Dotfiles Manager"
 license = "MIT"
 srcDir = "src"
 bin = @["dotman"]

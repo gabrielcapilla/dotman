@@ -1,10 +1,29 @@
 import std/[os, unittest, tempfiles]
 import ../src/systems/add_system
+import ../src/systems/execution_engine
 import ../src/systems/profile_ops
 import ../src/systems/set_system
 import ../src/core/path
 import ../src/core/types
+import ../src/core/result
 import ../src/components/profiles
+
+# Helper wrappers to adapt tests to new API
+proc addFileWrapper(profileName: string, fileName: string) =
+  var profiles = loadProfiles()
+  let pid = profiles.findProfileId(profileName)
+  if pid == ProfileIdInvalid:
+    # Mimic old behavior or raise appropriate error
+    raise ProfileError(msg: "Profile not found: " & profileName)
+  let plan = add_system.planAddFile(profiles, pid, fileName)
+  discard executePlan(plan, verbose = false)
+
+proc findFileInProfile(profileName: string, fileName: string): string =
+  var profiles = loadProfiles()
+  let pid = profiles.findProfileId(profileName)
+  if pid == ProfileIdInvalid:
+    raise ProfileError(msg: "Profile not found: " & profileName)
+  add_system.findFileInProfile(profiles, pid, fileName)
 
 suite "Add System Tests":
   setup:
@@ -26,7 +45,7 @@ suite "Add System Tests":
     let profileFile = getDotmanDir() / MainProfile / "home" / "testfile.txt"
     createDir(parentDir(profileFile))
     writeFile(profileFile, "profile content")
-    addFile(MainProfile, "testfile.txt")
+    addFileWrapper(MainProfile, "testfile.txt")
     check:
       symlinkExists(testHome / "testfile.txt")
 
@@ -34,7 +53,7 @@ suite "Add System Tests":
     let profileFile = getDotmanDir() / MainProfile / "config" / "myapp.conf"
     createDir(parentDir(profileFile))
     writeFile(profileFile, "config content")
-    addFile(MainProfile, "myapp.conf")
+    addFileWrapper(MainProfile, "myapp.conf")
     check:
       symlinkExists(testHome / ".config" / "myapp.conf")
 
@@ -43,30 +62,30 @@ suite "Add System Tests":
     createDir(configDir)
     writeFile(configDir / "config1.txt", "content1")
     writeFile(configDir / "config2.txt", "content2")
-    addFile(MainProfile, "myapp")
+    addFileWrapper(MainProfile, "myapp")
     check:
       symlinkExists(testHome / ".config" / "myapp")
     check:
-      dirExists(testHome / ".config" / "myapp" / "config1.txt")
+      fileExists(testHome / ".config" / "myapp" / "config1.txt")
     check:
-      dirExists(testHome / ".config" / "myapp" / "config2.txt")
+      fileExists(testHome / ".config" / "myapp" / "config2.txt")
 
   test "addFile handles nested directory structure":
     let nestedDir =
       getDotmanDir() / MainProfile / "config" / "myapp" / "nested" / "deep"
     createDir(nestedDir)
     writeFile(nestedDir / "file.txt", "deep content")
-    addFile(MainProfile, "myapp")
+    addFileWrapper(MainProfile, "myapp")
     check:
       symlinkExists(testHome / ".config" / "myapp")
     check:
-      dirExists(testHome / ".config" / "myapp" / "nested" / "deep" / "file.txt")
+      fileExists(testHome / ".config" / "myapp" / "nested" / "deep" / "file.txt")
 
   test "addFile creates symlinks for files in bin":
     let binDir = getDotmanDir() / MainProfile / "bin"
     createDir(binDir)
     writeFile(binDir / "mytool", "#!/bin/bash\necho test")
-    addFile(MainProfile, "mytool")
+    addFileWrapper(MainProfile, "mytool")
     check:
       symlinkExists(testHome / ".local" / "bin" / "mytool")
 
@@ -74,17 +93,17 @@ suite "Add System Tests":
     let shareDir = getDotmanDir() / MainProfile / "share"
     createDir(shareDir)
     writeFile(shareDir / "data.txt", "data")
-    addFile(MainProfile, "data.txt")
+    addFileWrapper(MainProfile, "data.txt")
     check:
       symlinkExists(testHome / ".local" / "share" / "data.txt")
 
   test "addFile fails if profile not found":
     expect ProfileError:
-      addFile("nonexistent", "testfile.txt")
+      addFileWrapper("nonexistent", "testfile.txt")
 
   test "addFile fails if file not found in profile":
     expect ProfileError:
-      addFile(MainProfile, "nonexistent.txt")
+      addFileWrapper(MainProfile, "nonexistent.txt")
 
   test "addFile fails if destination file exists":
     let profileFile = getDotmanDir() / MainProfile / "home" / "testfile.txt"
@@ -92,7 +111,7 @@ suite "Add System Tests":
     writeFile(profileFile, "profile content")
     writeFile(testHome / "testfile.txt", "local content")
     expect ProfileError:
-      addFile(MainProfile, "testfile.txt")
+      addFileWrapper(MainProfile, "testfile.txt")
 
   test "addFile creates symlinks in existing directory":
     let configDir = getDotmanDir() / MainProfile / "config" / "myapp"
@@ -100,7 +119,7 @@ suite "Add System Tests":
     writeFile(configDir / "config1.txt", "content1")
     writeFile(configDir / "config2.txt", "content2")
     createDir(testHome / ".config" / "myapp")
-    addFile(MainProfile, "myapp")
+    addFileWrapper(MainProfile, "myapp")
     check:
       not symlinkExists(testHome / ".config" / "myapp")
     check:
@@ -113,13 +132,13 @@ suite "Add System Tests":
   test "addFile handles empty directory":
     let configDir = getDotmanDir() / MainProfile / "config" / "myapp"
     createDir(configDir)
-    addFile(MainProfile, "myapp")
+    addFileWrapper(MainProfile, "myapp")
 
   test "addFile handles hidden files":
     let profileFile = getDotmanDir() / MainProfile / "home" / ".hiddenfile"
     createDir(parentDir(profileFile))
     writeFile(profileFile, "hidden content")
-    addFile(MainProfile, ".hiddenfile")
+    addFileWrapper(MainProfile, ".hiddenfile")
     check:
       symlinkExists(testHome / ".hiddenfile")
 
@@ -146,10 +165,10 @@ suite "Add System Tests":
     let profileFile = getDotmanDir() / MainProfile / "home" / "testfile.txt"
     createDir(parentDir(profileFile))
     writeFile(profileFile, "content")
-    addFile(MainProfile, "testfile.txt")
+    addFileWrapper(MainProfile, "testfile.txt")
     check:
       symlinkExists(testHome / "testfile.txt")
     removeFile(testHome / "testfile.txt")
-    addFile(MainProfile, "testfile.txt")
+    addFileWrapper(MainProfile, "testfile.txt")
     check:
       symlinkExists(testHome / "testfile.txt")

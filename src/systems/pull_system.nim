@@ -1,12 +1,10 @@
 import std/os
-import ../core/path
-import ../components/batches
-import ../components/profiles
-import path_resolution
-import symlink_ops
+import ../core/[types, result, execution]
+import ../components/[batches, profiles]
+import path_resolution, symlink_ops
 
-proc validatePull*(profile: string): FileBatch =
-  let profileDir = getDotmanDir() / profile
+proc validatePull*(profiles: ProfileData, profileId: ProfileId): FileBatch =
+  let profileDir = profiles.getProfilePath(profileId)
   var batch = initFileBatch(1024)
 
   for kind, categoryPath in walkDir(profileDir, relative = true):
@@ -35,30 +33,21 @@ proc validatePull*(profile: string): FileBatch =
 
   return batch
 
-proc pullProfile*(profile: string) =
-  let profileDir = getDotmanDir() / profile
+proc planPullProfile*(profiles: ProfileData, profileId: ProfileId): ExecutionPlan =
+  let profileDir = profiles.getProfilePath(profileId)
+  let profileName = profiles.names[int32(profileId)].data
 
   if not dirExists(profileDir):
-    raise ProfileError(msg: "Profile not found: " & profile)
+    raise ProfileError(msg: "Profile not found: " & profileName)
 
   echo "Validating..."
 
-  let linksToRemove = validatePull(profile)
+  let linksToRemove = validatePull(profiles, profileId)
 
   if linksToRemove.count == 0:
-    echo "Warning: No symlinks found for profile '" & profile & "'"
-    echo "Nothing to pull."
-    return
+    raise ProfileError(msg: "No symlinks found for profile '" & profileName & "'")
 
-  echo "Removing symlinks..."
-
-  var removedCount = 0
+  result = initExecutionPlan(linksToRemove.count)
   for i in 0 ..< linksToRemove.count:
     let homePath = linksToRemove.destinations[i]
-    if symlinkExists(homePath):
-      removeFile(homePath)
-      removedCount += 1
-      echo "  Removed " & $removedCount & "/" & $linksToRemove.count & ": " & homePath
-
-  echo ""
-  echo "Done! " & $removedCount & " links removed."
+    result.addRemoveSymlink(homePath)

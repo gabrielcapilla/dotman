@@ -1,6 +1,5 @@
 import std/os
-import ../core/[path, types]
-import ../components/profiles
+import ../core/[path, types, result]
 
 proc initDotfiles*() =
   let dir = getDotmanDir()

@@ -1,10 +1,46 @@
 import std/[os, unittest, tempfiles]
 import ../src/systems/unset_system
+import ../src/systems/add_system
 import ../src/systems/set_system
+import ../src/systems/execution_engine
 import ../src/systems/profile_ops
 import ../src/core/path
 import ../src/core/types
+import ../src/core/result
 import ../src/components/profiles
+
+# Helper wrappers to adapt tests to new API
+proc addFileWrapper(profileName: string, fileName: string) =
+  var profiles = loadProfiles()
+  let pid = profiles.findProfileId(profileName)
+  if pid == ProfileIdInvalid:
+    raise ProfileError(msg: "Profile not found: " & profileName)
+  let plan = add_system.planAddFile(profiles, pid, fileName)
+  discard executePlan(plan, verbose = false)
+
+proc unsetFileWrapper(profileName: string, fileName: string) =
+  var profiles = loadProfiles()
+  let pid = profiles.findProfileId(profileName)
+  if pid == ProfileIdInvalid:
+    raise ProfileError(msg: "Profile not found: " & profileName)
+  let plan = unset_system.planUnsetFile(profiles, pid, fileName)
+  discard executePlan(plan, verbose = false)
+
+proc moveFileToProfileWrapper(profileName: string, homePath: string) =
+  var profiles = loadProfiles()
+  let pid = profiles.findProfileId(profileName)
+  if pid == ProfileIdInvalid:
+    raise ProfileError(msg: "Profile not found: " & profileName)
+  let plan = set_system.planMoveFileToProfile(profiles, pid, homePath)
+  discard executePlan(plan, verbose = false)
+
+proc isDotmanManaged(linkPath: string, profileName: string): bool =
+  var profiles = loadProfiles()
+  let pid = profiles.findProfileId(profileName)
+  if pid == ProfileIdInvalid:
+    return false
+  let path = profiles.getProfilePath(pid)
+  unset_system.isDotmanManaged(linkPath, path)
 
 suite "Unset System Tests":
   setup:
@@ -25,11 +61,11 @@ suite "Unset System Tests":
   test "unsetFile removes symlink and restores file":
     let testFile = testHome / "testfile.txt"
     writeFile(testFile, "test content")
-    moveFileToProfile(MainProfile, testFile)
+    moveFileToProfileWrapper(MainProfile, testFile)
     check:
       symlinkExists(testFile)
 
-    unsetFile(MainProfile, "testfile.txt")
+    unsetFileWrapper(MainProfile, "testfile.txt")
     check:
       not symlinkExists(testFile)
     check:
@@ -42,11 +78,11 @@ suite "Unset System Tests":
     createDir(configDir)
     writeFile(configDir / "config1.txt", "content1")
     writeFile(configDir / "config2.txt", "content2")
-    moveFileToProfile(MainProfile, configDir)
+    moveFileToProfileWrapper(MainProfile, configDir)
     check:
       symlinkExists(configDir)
 
-    unsetFile(MainProfile, "myapp")
+    unsetFileWrapper(MainProfile, "myapp")
     check:
       not symlinkExists(configDir)
     check:
@@ -58,26 +94,26 @@ suite "Unset System Tests":
 
   test "unsetFile fails if file not in profile":
     expect ProfileError:
-      unsetFile(MainProfile, "testfile.txt")
+      unsetFileWrapper(MainProfile, "testfile.txt")
 
   test "unsetFile fails if file not managed by dotman":
     let testFile = testHome / "testfile.txt"
     writeFile(testFile, "content")
     expect ProfileError:
-      unsetFile(MainProfile, "testfile.txt")
+      unsetFileWrapper(MainProfile, "testfile.txt")
 
   test "isDotmanManaged returns true for managed symlink":
     let testFile = testHome / "testfile.txt"
     writeFile(testFile, "content")
-    moveFileToProfile(MainProfile, testFile)
+    moveFileToProfileWrapper(MainProfile, testFile)
     check:
-      isDotmanManaged(testFile, getDotmanDir() / MainProfile)
+      isDotmanManaged(testFile, MainProfile)
 
   test "isDotmanManaged returns false for non-symlink":
     let testFile = testHome / "testfile.txt"
     writeFile(testFile, "content")
     check:
-      not isDotmanManaged(testFile, getDotmanDir() / MainProfile)
+      not isDotmanManaged(testFile, MainProfile)
 
   test "isDotmanManaged returns false for external symlink":
     let testFile = testHome / "testfile.txt"
@@ -85,4 +121,26 @@ suite "Unset System Tests":
     writeFile(externalFile, "external")
     createSymlink(externalFile, testFile)
     check:
-      not isDotmanManaged(testFile, getDotmanDir() / MainProfile)
+      not isDotmanManaged(testFile, MainProfile)
+
+  test "unsetFile handles deep paths":
+    let fontsDir = testHome / ".local" / "share" / "fonts"
+    let deepDir = fontsDir / "Monaspace"
+    createDir(deepDir)
+    let testFile = deepDir / "font.ttf"
+    writeFile(testFile, "font data")
+
+    moveFileToProfileWrapper(MainProfile, deepDir)
+    check:
+      symlinkExists(deepDir)
+
+    unsetFileWrapper(MainProfile, "Monaspace")
+
+    check:
+      not symlinkExists(deepDir)
+    check:
+      dirExists(deepDir)
+    check:
+      fileExists(testFile)
+    check:
+      readFile(testFile) == "font data"

@@ -1,35 +1,6 @@
 import std/[os, strutils]
-import ../core/iteration
+import ../core/[iteration, types]
 import ../components/batches
-
-type
-  ValidationError* = object
-    path*: string
-    reason*: string
-
-  ValidationResult* = object
-    hasConflicts*: bool
-    count*: int
-    capacity*: int
-    errors*: seq[ValidationError]
-
-proc initValidationResult*(capacity: int = 1024): ValidationResult {.noSideEffect.} =
-  ValidationResult(
-    hasConflicts: false,
-    count: 0,
-    capacity: capacity,
-    errors: newSeq[ValidationError](capacity),
-  )
-
-proc addValidationError*(result: var ValidationResult, path: string, reason: string) =
-  if result.count >= result.capacity:
-    let newCap = result.capacity * 2
-    result.errors.setLen(newCap)
-    result.capacity = newCap
-
-  result.errors[result.count] = ValidationError(path: path, reason: reason)
-  result.count += 1
-  result.hasConflicts = true
 
 proc validateBatch*(batch: FileBatch, profileDir: string): ValidationResult =
   result = initValidationResult(batch.count)

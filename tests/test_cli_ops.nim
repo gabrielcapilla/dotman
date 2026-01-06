@@ -3,6 +3,7 @@ import ../src/systems/cli_ops
 import ../src/systems/profile_ops
 import ../src/core/path
 import ../src/core/types
+import ../src/core/result
 import ../src/components/profiles
 
 suite "CLI Operations Tests":
