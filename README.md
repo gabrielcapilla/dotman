@@ -1,10 +1,10 @@
 # dotman
 
-A high-performance dotfiles manager written in Nim with multi-profile support and automatic conflict detection.
+A dotfiles manager written in Nim with multi-profile support and automatic conflict detection. Dotman handles symlinks, conflict resolution, and profile management natively. No Python, no bloat.
 
 ## Documentation
 
-Full documentation: https://gabrielcapilla.github.io/dotman/docs.html
+Full documentation: https://gabrielcapilla.github.io/projects/dotman/docs
 
 ## Installation
 
