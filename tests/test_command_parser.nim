@@ -1,77 +1,131 @@
-import std/[unittest, options]
-import ../src/core/command_parser
-import ../src/core/types
+import std/[os, osproc, strutils, sequtils, unittest, options]
+import ../src/core/[command_parser, types]
 
-suite "Command Parser Tests":
-  setup:
-    # Set command line args for testing
-    proc setArgs(args: seq[string]) =
-      # Note: This is limited by Nim's design
-      # For full testing, we'd need a more sophisticated approach
-      discard
+proc runHelper(args: seq[string]): tuple[code: int, output: string] =
+  let cmd =
+    "DOTMAN_PARSER_HELPER=1 " & getAppFilename().quoteShell & " " &
+    args.mapIt(it.quoteShell).join(" ")
+  let res = execCmdEx(cmd)
+  (res.exitCode, res.output)
 
-  test "Parse empty args returns help command":
-    # When no args provided, should return CmdHelp
-    # Note: This test is limited by Nim's paramCount behavior
-    skip()
+if existsEnv("DOTMAN_PARSER_HELPER"):
+  let parsed = parseCommand()
+  echo "command=", $parsed.command
+  echo "profile=", parsed.args.profile
+  echo "file=", parsed.args.fileName
+  echo "source=", parsed.args.sourceProfile
+  echo "delete=", parsed.deleteProfileName
+  if parsed.statusFlags.isSome():
+    let flags = parsed.statusFlags.get()
+    echo "status=true"
+    echo "status_profile=", flags.profile
+    echo "status_filter=", $flags.filter
+    echo "status_category=",
+      if flags.category.isSome():
+        $flags.category.get()
+      else:
+        "none"
+    echo "status_ascii=", $flags.useAscii
+    echo "status_verbose=", $flags.verbose
+  else:
+    echo "status=false"
+  quit(0)
 
-  test "Parse help command":
-    # dotman help -> CmdHelp
-    skip()
+suite "Command Parser Integration":
+  test "parse help command":
+    let res = runHelper(@["help"])
+    check res.code == 0
+    check res.output.contains("command=CmdHelp")
 
-  test "Parse init command":
-    # dotman init -> CmdInit
-    skip()
+  test "parse init command":
+    let res = runHelper(@["init"])
+    check res.code == 0
+    check res.output.contains("command=CmdInit")
 
-  test "Parse init with short flag":
-    # dotman -i -> CmdInit
-    skip()
+  test "parse init short option":
+    let res = runHelper(@["-i"])
+    check res.code == 0
+    check res.output.contains("command=CmdInit")
 
-  test "Parse add command with file":
-    # dotman add .bashrc -> CmdAdd with fileName = ".bashrc"
-    skip()
+  test "parse add command with file":
+    let res = runHelper(@["add", ".bashrc"])
+    check res.code == 0
+    check res.output.contains("command=CmdAdd")
+    check res.output.contains("file=.bashrc")
 
-  test "Parse remove command with file":
-    # dotman remove .bashrc -> CmdRemove with fileName = ".bashrc"
-    skip()
+  test "parse remove command with file":
+    let res = runHelper(@["remove", ".bashrc"])
+    check res.code == 0
+    check res.output.contains("command=CmdRemove")
+    check res.output.contains("file=.bashrc")
 
-  test "Parse make command with profile name":
-    # dotman make laptop -> CmdMake with fileName = "laptop"
-    skip()
+  test "parse make command with profile name":
+    let res = runHelper(@["make", "laptop"])
+    check res.code == 0
+    check res.output.contains("command=CmdMake")
+    check res.output.contains("file=laptop")
 
-  test "Parse clone command":
-    # dotman clone main laptop -> CmdClone
-    skip()
+  test "parse clone command":
+    let res = runHelper(@["clone", "main", "laptop"])
+    check res.code == 0
+    check res.output.contains("command=CmdClone")
+    check res.output.contains("source=main")
+    check res.output.contains("file=laptop")
 
-  test "Parse list command":
-    # dotman list -> CmdList
-    skip()
+  test "parse list command":
+    let res = runHelper(@["list"])
+    check res.code == 0
+    check res.output.contains("command=CmdList")
 
-  test "Parse status command":
-    # dotman status -> CmdStatus
-    skip()
+  test "parse status command with flags":
+    let res = runHelper(@["status", "--category", "config", "--linked", "--ascii"])
+    check res.code == 0
+    check res.output.contains("command=CmdStatus")
+    check res.output.contains("status=true")
+    check res.output.contains("status_filter=FilterLinked")
+    check res.output.contains("status_category=Config")
+    check res.output.contains("status_ascii=true")
 
-  test "Parse push command with profile":
-    # dotman push laptop -> CmdPush with profile = "laptop"
-    skip()
+  test "parse push command with profile":
+    let res = runHelper(@["push", "laptop"])
+    check res.code == 0
+    check res.output.contains("command=CmdPush")
+    check res.output.contains("profile=laptop")
 
-  test "Parse pull command with profile":
-    # dotman pull laptop -> CmdPull with profile = "laptop"
-    skip()
+  test "parse pull command with profile":
+    let res = runHelper(@["pull", "laptop"])
+    check res.code == 0
+    check res.output.contains("command=CmdPull")
+    check res.output.contains("profile=laptop")
 
-  test "Parse version command":
-    # dotman version -> CmdVersion
-    skip()
+  test "parse version command":
+    let res = runHelper(@["version"])
+    check res.code == 0
+    check res.output.contains("command=CmdVersion")
 
-  test "Parse set command with file":
-    # dotman set .bashrc -> CmdSet with fileName = ".bashrc"
-    skip()
+  test "parse set command with file":
+    let res = runHelper(@["set", ".bashrc"])
+    check res.code == 0
+    check res.output.contains("command=CmdSet")
+    check res.output.contains("file=.bashrc")
 
-  test "Parse unset command with file":
-    # dotman unset .bashrc -> CmdUnset with fileName = ".bashrc"
-    skip()
+  test "parse unset command with file":
+    let res = runHelper(@["unset", ".bashrc"])
+    check res.code == 0
+    check res.output.contains("command=CmdUnset")
+    check res.output.contains("file=.bashrc")
 
-suite "Command Args Validation":
+  test "parse delete-profile option":
+    let res = runHelper(@["--delete-profile", "old"])
+    check res.code == 0
+    check res.output.contains("command=CmdDeleteProfile")
+    check res.output.contains("delete=old")
+
+  test "unknown command returns error":
+    let res = runHelper(@["unknown-cmd"])
+    check res.code != 0
+
+suite "Command Types":
   test "CommandArgs has correct default profile":
     let args = CommandArgs(
       command: CmdHelp, profile: MainProfile, fileName: "", sourceProfile: ""
@@ -84,30 +138,7 @@ suite "Command Args Validation":
     check parsed.args.profile == "main"
     check parsed.deleteProfileName == ""
 
-suite "StatusFlags Tests":
-  test "StatusFlags initializes correctly":
-    var flags = StatusFlags(
-      profile: "main",
-      filter: FilterAll,
-      category: none[Category](),
-      useAscii: false,
-      verbose: false,
-    )
-    check flags.filter == FilterAll
-    check flags.useAscii == false
-    check flags.verbose == false
-
-  test "StatusFlags with filter set":
-    var flags = StatusFlags(
-      profile: "main",
-      filter: FilterLinked,
-      category: none[Category](),
-      useAscii: false,
-      verbose: false,
-    )
-    check flags.filter == FilterLinked
-
-suite "Category Mapping":
+suite "Enum Values":
   test "Category enum has correct values":
     check ord(Config) == 0
     check ord(Share) == 1
@@ -115,7 +146,6 @@ suite "Category Mapping":
     check ord(Local) == 3
     check ord(Bin) == 4
 
-suite "StatusFilter Enum":
   test "StatusFilter enum has correct values":
     check ord(FilterAll) == 0
     check ord(FilterLinked) == 1

@@ -155,5 +155,10 @@ suite "Status System Tests":
     addFileWrapper(MainProfile, "myapp.conf")
 
     let report = scanProfileSimpleWrapper(MainProfile)
+    var found = false
+    for i in 0 ..< report.count:
+      if report.relPathAt(i) == "config/myapp.conf":
+        found = true
+        break
     check:
-      "config/myapp.conf" in report.relPaths
+      found

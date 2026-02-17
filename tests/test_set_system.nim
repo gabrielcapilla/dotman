@@ -126,6 +126,14 @@ suite "Set System Tests":
       moveFileToProfileWrapper(MainProfile, testFile)
     removeFile(testFile)
 
+  test "moveFileToProfile rejects prefix-confused home path":
+    let siblingHome = tempDir / "home_other"
+    createDir(siblingHome)
+    let testFile = siblingHome / "outside.txt"
+    writeFile(testFile, "content")
+    expect ProfileError:
+      moveFileToProfileWrapper(MainProfile, testFile)
+
   test "moveFileToProfile fails if source file not found":
     let testFile = testHome / "nonexistent.txt"
     expect ProfileError:

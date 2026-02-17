@@ -227,3 +227,20 @@ suite "Push System Tests":
     let result = validatePushWrapper(MainProfile)
     check:
       result.hasConflicts == false
+
+  test "validatePush treats profile prefix symlink as external":
+    let profileDir = getDotmanDir() / MainProfile
+    let fakeProfileDir = profileDir & "_other"
+    createDir(fakeProfileDir / "home")
+    let profileFile = profileDir / "home" / "testfile.txt"
+    createDir(parentDir(profileFile))
+    writeFile(profileFile, "profile content")
+    let fakeTarget = fakeProfileDir / "home" / "testfile.txt"
+    writeFile(fakeTarget, "other profile")
+    createSymlink(fakeTarget, testHome / "testfile.txt")
+
+    let result = validatePushWrapper(MainProfile)
+    check:
+      result.hasConflicts == true
+    check:
+      result.count == 1

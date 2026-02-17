@@ -123,6 +123,17 @@ suite "Unset System Tests":
     check:
       not isDotmanManaged(testFile, MainProfile)
 
+  test "isDotmanManaged rejects profile prefix confusion":
+    let profileDir = getDotmanDir() / MainProfile
+    let fakeProfileDir = profileDir & "_other"
+    createDir(fakeProfileDir)
+    let fakeTarget = fakeProfileDir / "file.txt"
+    writeFile(fakeTarget, "x")
+    let linkPath = testHome / "prefix-link.txt"
+    createSymlink(fakeTarget, linkPath)
+    check:
+      not unset_system.isDotmanManaged(linkPath, profileDir)
+
   test "unsetFile handles deep paths":
     let fontsDir = testHome / ".local" / "share" / "fonts"
     let deepDir = fontsDir / "Monaspace"
