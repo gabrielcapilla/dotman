@@ -1,5 +1,6 @@
 import std/[strformat, os]
 import colors
+import types
 
 proc getAppName*(): string =
   result = extractFilename(getAppFilename())
@@ -96,5 +97,5 @@ proc showHelp*() =
 
 proc showVersion*() =
   let binName = getAppName()
-  echo fmt"{green}{binName}{reset} 0.2.0"
+  echo fmt"{green}{binName}{reset} {AppVersion}"
   quit(0)
