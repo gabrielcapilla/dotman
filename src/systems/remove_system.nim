@@ -25,5 +25,5 @@ proc planRemoveFile*(
 
   result = initExecutionPlan(batch.count)
   for i in 0 ..< batch.count:
-    let dest = batch.destinations[i]
+    let dest = batch.destinationAt(i)
     result.addRemoveSymlink(dest)

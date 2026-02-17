@@ -59,6 +59,6 @@ proc planAddFile*(
 
   result = initExecutionPlan(batch.count)
   for i in 0 ..< batch.count:
-    let source = batch.sources[i]
-    let dest = batch.destinations[i]
+    let source = batch.sourceAt(i)
+    let dest = batch.destinationAt(i)
     result.addCreateSymlink(source, dest)

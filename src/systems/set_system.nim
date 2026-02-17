@@ -1,16 +1,20 @@
 import std/[os, strutils, sequtils]
-import ../core/[types, result, execution]
+import ../core/[types, result, execution, path_safety]
 import ../components/profiles
 
 proc inferCategoryFromHome*(
     homePath: string
 ): tuple[category: string, relPath: string] =
-  let home = getHomeDir()
+  let home = canonicalPath(getHomeDir())
+  let canonicalHomePath = canonicalPath(homePath)
 
-  if not homePath.startsWith(home):
+  if not isWithinPath(canonicalHomePath, home):
     raise ProfileError(msg: "File must be in $HOME")
 
-  let relPath = homePath[home.len ..^ 1]
+  let relPath = relativeFromRoot(canonicalHomePath, home)
+  if relPath.len == 0:
+    raise ProfileError(msg: "Invalid path")
+
   let parts = relPath.split("/").filterIt(it.len > 0)
 
   if parts.len == 0:
@@ -67,10 +71,12 @@ proc planMoveFileToProfile*(
   if not dirExists(profileDir):
     raise ProfileError(msg: "Profile not found: " & profileName)
 
-  if symlinkExists(homePath):
+  let canonicalHomePath = canonicalPath(homePath)
+
+  if symlinkExists(canonicalHomePath):
     raise ProfileError(msg: "File is a symlink. Use 'add' instead")
 
-  let (category, relPath) = inferCategoryFromHome(homePath)
+  let (category, relPath) = inferCategoryFromHome(canonicalHomePath)
 
   var destDir = profileDir / category
   var destPath = destDir / relPath
@@ -80,16 +86,16 @@ proc planMoveFileToProfile*(
   if fileExists(destPath):
     raise ProfileError(msg: "Already exists in profile: " & relPath)
 
-  if fileExists(homePath) or dirExists(homePath):
+  if fileExists(canonicalHomePath) or dirExists(canonicalHomePath):
     result = initExecutionPlan(2)
 
-    if dirExists(homePath):
+    if dirExists(canonicalHomePath):
       result.addCreateDir(destPath.parentDir)
-      result.addMoveDir(homePath, destPath)
+      result.addMoveDir(canonicalHomePath, destPath)
     else:
       result.addCreateDir(destPath.parentDir)
-      result.addMoveFile(homePath, destPath)
+      result.addMoveFile(canonicalHomePath, destPath)
 
-    result.addCreateSymlink(destPath, homePath)
+    result.addCreateSymlink(destPath, canonicalHomePath)
   else:
-    raise ProfileError(msg: "File not found: " & homePath)
+    raise ProfileError(msg: "File not found: " & canonicalHomePath)

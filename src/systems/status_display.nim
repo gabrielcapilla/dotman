@@ -29,15 +29,15 @@ proc getCategoryName(cat: Category): string =
     return "bin"
 
 proc groupBySubCategory*(data: StatusData): seq[CategorySubStats] =
-  result = @[]
+  result = newSeqOfCap[CategorySubStats](5)
 
   var subCatMap: Table[string, Table[string, SubCategoryStats]]
   subCatMap = initTable[string, Table[string, SubCategoryStats]]()
 
   for i in 0 ..< data.count:
-    let relPath = data.relPaths[i]
+    let relPath = data.relPathAt(i)
     let status = data.statuses[i]
-    let cat = getCategory(relPath)
+    let cat = data.categories[i]
     let catName =
       case cat
       of Config: "config"
@@ -49,12 +49,16 @@ proc groupBySubCategory*(data: StatusData): seq[CategorySubStats] =
     if not subCatMap.hasKey(catName):
       subCatMap[catName] = initTable[string, SubCategoryStats]()
 
-    let parts = relPath.split("/")
+    let firstSep = relPath.find('/')
     let subCatName =
-      if parts.len > 1:
-        parts[1]
-      else:
+      if firstSep < 0:
         ""
+      else:
+        let nextSep = relPath.find('/', firstSep + 1)
+        if nextSep < 0:
+          relPath[firstSep + 1 ..^ 1]
+        else:
+          relPath[firstSep + 1 ..< nextSep]
 
     if not subCatMap[catName].hasKey(subCatName):
       subCatMap[catName][subCatName] = SubCategoryStats(
@@ -73,11 +77,14 @@ proc groupBySubCategory*(data: StatusData): seq[CategorySubStats] =
 
   for cat in Category:
     let catName = getCategoryName(cat)
-    var subCats: seq[SubCategoryStats] = @[]
+    var subCats: seq[SubCategoryStats]
 
     if subCatMap.hasKey(catName):
-      for name, stats in subCatMap[catName].pairs:
+      subCats = newSeqOfCap[SubCategoryStats](subCatMap[catName].len)
+      for _, stats in subCatMap[catName].pairs:
         subCats.add(stats)
+    else:
+      subCats = @[]
 
     result.add(CategorySubStats(category: cat, subCategories: subCats))
 
@@ -94,21 +101,20 @@ proc showCategorySummary*(
 
   if verbose and category.isNone():
     let categorySubStats = groupBySubCategory(data)
+    let headers =
+      @[
+        newCell("Subdirectory", AlignLeft),
+        newCell("Linked", AlignRight),
+        newCell("NotLinked", AlignRight),
+        newCell("Conflict", AlignRight),
+        newCell("Other", AlignRight),
+      ]
 
     for catStats in categorySubStats:
       let catName = getCategoryName(catStats.category)
 
       if catStats.subCategories.len > 0:
-        var headers: seq[Cell] =
-          @[
-            newCell("Subdirectory", AlignLeft),
-            newCell("Linked", AlignRight),
-            newCell("NotLinked", AlignRight),
-            newCell("Conflict", AlignRight),
-            newCell("Other", AlignRight),
-          ]
-
-        var rows: seq[seq[Cell]] = @[]
+        var rows = newSeqOfCap[seq[Cell]](catStats.subCategories.len)
         for subStats in catStats.subCategories:
           if subStats.linked + subStats.notLinked + subStats.conflicts + subStats.other >
               0:
@@ -117,15 +123,13 @@ proc showCategorySummary*(
                 catName & "/(root)"
               else:
                 catName & "/" & subStats.name
-            rows.add(
-              @[
-                newCell(displayName, AlignLeft),
-                newCell($subStats.linked, AlignRight),
-                newCell($subStats.notLinked, AlignRight),
-                newCell($subStats.conflicts, AlignRight),
-                newCell($subStats.other, AlignRight),
-              ]
-            )
+            var row = newSeq[Cell](5)
+            row[0] = newCell(displayName, AlignLeft)
+            row[1] = newCell($subStats.linked, AlignRight)
+            row[2] = newCell($subStats.notLinked, AlignRight)
+            row[3] = newCell($subStats.conflicts, AlignRight)
+            row[4] = newCell($subStats.other, AlignRight)
+            rows.add(row)
 
         let style = if useAscii: AsciiStyle else: UnicodeStyle
         echo renderTable(headers, rows, style)
@@ -142,33 +146,33 @@ proc showCategorySummary*(
         newCell("Other", AlignRight),
       ]
 
-    var rows: seq[seq[Cell]] = @[]
+    var rows =
+      if category.isSome():
+        newSeqOfCap[seq[Cell]](1)
+      else:
+        newSeqOfCap[seq[Cell]](5)
 
     if category.isSome():
       let cat = category.get()
       let stats = categoryStats[cat]
-      rows.add(
-        @[
-          newCell(getCategoryName(cat) & "/", AlignLeft),
-          newCell($stats.linked, AlignRight),
-          newCell($stats.notLinked, AlignRight),
-          newCell($stats.conflicts, AlignRight),
-          newCell($stats.other, AlignRight),
-        ]
-      )
+      var row = newSeq[Cell](5)
+      row[0] = newCell(getCategoryName(cat) & "/", AlignLeft)
+      row[1] = newCell($stats.linked, AlignRight)
+      row[2] = newCell($stats.notLinked, AlignRight)
+      row[3] = newCell($stats.conflicts, AlignRight)
+      row[4] = newCell($stats.other, AlignRight)
+      rows.add(row)
     else:
       for cat in Category:
         let stats = categoryStats[cat]
         if stats.linked + stats.notLinked + stats.conflicts + stats.other > 0:
-          rows.add(
-            @[
-              newCell(getCategoryName(cat) & "/", AlignLeft),
-              newCell($stats.linked, AlignRight),
-              newCell($stats.notLinked, AlignRight),
-              newCell($stats.conflicts, AlignRight),
-              newCell($stats.other, AlignRight),
-            ]
-          )
+          var row = newSeq[Cell](5)
+          row[0] = newCell(getCategoryName(cat) & "/", AlignLeft)
+          row[1] = newCell($stats.linked, AlignRight)
+          row[2] = newCell($stats.notLinked, AlignRight)
+          row[3] = newCell($stats.conflicts, AlignRight)
+          row[4] = newCell($stats.other, AlignRight)
+          rows.add(row)
 
     let style = if useAscii: AsciiStyle else: UnicodeStyle
     if rows.len > 0:
@@ -197,16 +201,36 @@ proc showDetailedReport*(
   echo "Status for profile '" & profile & "':"
   echo ""
 
-  let indices = filterData(data, filter, category)
   var linkedCount = 0
   var notLinkedCount = 0
   var conflictCount = 0
   var otherCount = 0
 
-  for idx in indices:
-    let relPath = data.relPaths[idx]
-    let homePath = data.homePaths[idx]
-    let status = data.statuses[idx]
+  for i in 0 ..< data.count:
+    let status = data.statuses[i]
+    let cat = data.categories[i]
+
+    if category.isSome() and category.get() != cat:
+      continue
+
+    let matchesFilter =
+      case filter
+      of FilterAll:
+        true
+      of FilterLinked:
+        status == Linked
+      of FilterNotLinked:
+        status == NotLinked
+      of FilterConflicts:
+        status == Conflict
+      of FilterOther:
+        status == OtherProfile
+
+    if not matchesFilter:
+      continue
+
+    let relPath = data.relPathAt(i)
+    let homePath = data.homePathAt(i)
 
     case status
     of Linked:

@@ -1,4 +1,4 @@
-import std/[strformat, os, options, parseopt]
+import std/[strformat, os, options]
 import ../core/[types, state, colors, help, path, command_parser, result]
 import ../components/profiles
 import
@@ -77,85 +77,29 @@ proc executeUnset*(state: var AppState, fileName: string) =
   discard execution_engine.executePlan(plan, verbose = false)
   colors.actionSuccess(fmt"Restoring {fileName}")
 
-proc parseStatusFlagsImpl*(
-    p: var OptParser, profiles: ProfileData, currentProfile: string
+proc showStatus*(
+    profiles: ProfileData, profile: string, profileId: ProfileId, flags: StatusFlags
 ) =
-  var profile = currentProfile
-  var filter = FilterAll
-  var category: Option[Category] = none(Category)
-  var useAscii = false
-  var verbose = false
-
-  while true:
-    p.next()
-    case p.kind
-    of cmdEnd:
-      break
-    of cmdShortOption, cmdLongOption:
-      case p.key
-      of "profile":
-        if p.val.len == 0:
-          p.next()
-          profile = p.key
-        else:
-          profile = p.val
-      of "category":
-        if p.val.len == 0:
-          p.next()
-          let catName = if p.val.len == 0: p.key else: p.val
-          case catName
-          of "config":
-            category = some(Config)
-          of "share":
-            category = some(Share)
-          of "home":
-            category = some(Home)
-          of "local":
-            category = some(Local)
-          of "bin":
-            category = some(Bin)
-          else:
-            colors.actionError("Unknown category: " & catName)
-            quit(1)
-      of "conflicts":
-        filter = FilterConflicts
-      of "linked":
-        filter = FilterLinked
-      of "not-linked":
-        filter = FilterNotLinked
-      of "other":
-        filter = FilterOther
-      of "ascii":
-        useAscii = true
-      of "verbose", "v":
-        verbose = true
-      else:
-        colors.actionError("Unknown option for status: " & p.key)
-        quit(1)
-    of cmdArgument:
-      colors.actionError("Unexpected argument: " & p.key)
-      quit(1)
-
-  let profileId = profiles.findProfileId(profile)
-  if profileId == ProfileIdInvalid:
-    if not dirExists(getDotmanDir()):
-      colors.actionError("Not initialized. Run 'dotman init' first.")
-      quit(1)
-    raise ProfileError(msg: "Profile not found: " & profile)
-
   let data = scanProfileSimple(profiles, profileId)
 
-  if filter == FilterAll:
+  if flags.filter == FilterAll:
     status_display.showCategorySummary(
-      data, profile, useAscii = useAscii, category = category, verbose = verbose
+      data,
+      profile,
+      useAscii = flags.useAscii,
+      category = flags.category,
+      verbose = flags.verbose,
     )
   else:
-    status_display.showDetailedReport(data, profile, filter, category)
+    status_display.showDetailedReport(data, profile, flags.filter, flags.category)
 
 proc executeStatus*(state: var AppState, flags: StatusFlags) =
-  discard state.ensureProfileInitialized(flags.profile)
-  var p = initOptParser()
-  parseStatusFlagsImpl(p, state.profiles, flags.profile)
+  let profile = if flags.profile.len == 0: MainProfile else: flags.profile
+  let res = state.reloadAndFindProfile(profile)
+  if not res.success:
+    colors.actionError(res.error)
+    quit(1)
+  showStatus(state.profiles, profile, res.value, flags)
 
 proc executePush*(state: var AppState, profileName: string) =
   state.reloadProfiles()

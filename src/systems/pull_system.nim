@@ -24,7 +24,7 @@ proc validatePull*(profiles: ProfileData, profileId: ProfileId): FileBatch =
             var tempBatch = initFileBatch(64)
             createSymlinksRecursive(profileDir, relPath, tempBatch)
             for i in 0 ..< tempBatch.count:
-              batch.addToFileBatch(tempBatch.sources[i], tempBatch.destinations[i])
+              batch.addToFileBatch(tempBatch.sourceAt(i), tempBatch.destinationAt(i))
         elif kind2 == pcFile and fileExists(fullPath):
           if symlinkExists(destPath):
             let target = expandSymlink(destPath)
@@ -49,5 +49,5 @@ proc planPullProfile*(profiles: ProfileData, profileId: ProfileId): ExecutionPla
 
   result = initExecutionPlan(linksToRemove.count)
   for i in 0 ..< linksToRemove.count:
-    let homePath = linksToRemove.destinations[i]
+    let homePath = linksToRemove.destinationAt(i)
     result.addRemoveSymlink(homePath)

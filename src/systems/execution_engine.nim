@@ -1,5 +1,5 @@
 import std/os
-import ../core/[execution, result]
+import ../core/[execution, result, path, path_safety]
 import symlink_ops
 
 type ExecutionResult* = object
@@ -11,9 +11,48 @@ type ExecutionResult* = object
 proc initExecutionResult*(): ExecutionResult =
   ExecutionResult(success: true, executed: 0, failed: 0, errors: newSeq[string](0))
 
+type ManagedRoot = enum
+  RootUnknown
+  RootHome
+  RootDotman
+
+proc classifyManagedRoot(path: string): ManagedRoot =
+  if isWithinPath(path, getDotmanDir()):
+    return RootDotman
+  if isWithinPath(path, getHomeDir()):
+    return RootHome
+  RootUnknown
+
+proc validateOperationPaths(op: Operation): string =
+  let srcRoot = classifyManagedRoot(op.source)
+  let dstRoot = classifyManagedRoot(op.dest)
+
+  case op.opType
+  of OpCreateSymlink:
+    if srcRoot != RootDotman:
+      return "Refused operation: symlink source outside dotman directory"
+    if dstRoot != RootHome:
+      return "Refused operation: symlink destination outside home directory"
+  of OpRemoveSymlink:
+    if dstRoot != RootHome:
+      return "Refused operation: symlink removal outside home directory"
+  of OpMoveFile, OpMoveDir:
+    if srcRoot == RootUnknown or dstRoot == RootUnknown:
+      return "Refused operation: move path outside managed directories"
+    if srcRoot == dstRoot:
+      return "Refused operation: move must cross between home and dotman roots"
+  of OpCreateDir, OpRemoveFile, OpRemoveDir:
+    if dstRoot == RootUnknown:
+      return "Refused operation: destination outside managed directories"
+  ""
+
 proc executeCreateSymlink*(op: Operation): string =
   try:
     symlink_ops.createLink(op.source, op.dest)
+    if not symlinkExists(op.dest):
+      return "Failed to create symlink: destination is not a symlink after operation"
+    if expandSymlink(op.dest) != op.source:
+      return "Failed to create symlink: destination target mismatch after operation"
     return ""
   except ProfileError as e:
     return e.msg
@@ -24,6 +63,8 @@ proc executeRemoveSymlink*(op: Operation): string =
   try:
     if symlinkExists(op.dest):
       removeFile(op.dest)
+    if symlinkExists(op.dest):
+      return "Failed to remove symlink: symlink still exists after operation"
     return ""
   except Exception as e:
     return "Failed to remove symlink: " & e.msg
@@ -33,6 +74,10 @@ proc executeMoveFile*(op: Operation): string =
     if fileExists(op.source):
       createDir(op.dest.parentDir)
       moveFile(op.source, op.dest)
+      if not fileExists(op.dest):
+        return "Failed to move file: destination file missing after operation"
+      if fileExists(op.source):
+        return "Failed to move file: source file still exists after operation"
     return ""
   except Exception as e:
     return "Failed to move file: " & e.msg
@@ -42,6 +87,10 @@ proc executeMoveDir*(op: Operation): string =
     if dirExists(op.source):
       createDir(op.dest.parentDir)
       moveDir(op.source, op.dest)
+      if not dirExists(op.dest):
+        return "Failed to move directory: destination directory missing after operation"
+      if dirExists(op.source):
+        return "Failed to move directory: source directory still exists after operation"
     return ""
   except Exception as e:
     return "Failed to move directory: " & e.msg
@@ -50,6 +99,8 @@ proc executeCreateDir*(op: Operation): string =
   try:
     if not dirExists(op.dest):
       createDir(op.dest)
+    if not dirExists(op.dest):
+      return "Failed to create directory: destination missing after operation"
     return ""
   except Exception as e:
     return "Failed to create directory: " & e.msg
@@ -58,6 +109,8 @@ proc executeRemoveFile*(op: Operation): string =
   try:
     if fileExists(op.dest):
       removeFile(op.dest)
+    if fileExists(op.dest):
+      return "Failed to remove file: file still exists after operation"
     return ""
   except Exception as e:
     return "Failed to remove file: " & e.msg
@@ -66,6 +119,8 @@ proc executeRemoveDir*(op: Operation): string =
   try:
     if dirExists(op.dest):
       removeDir(op.dest)
+    if dirExists(op.dest):
+      return "Failed to remove directory: directory still exists after operation"
     return ""
   except Exception as e:
     return "Failed to remove directory: " & e.msg
@@ -108,25 +163,31 @@ proc executePlan*(plan: ExecutionPlan, verbose: bool = true): ExecutionResult =
   if verbose:
     echo "Executing " & $plan.count & " operations..."
 
+  result.errors = newSeqOfCap[string](min(plan.count, 16))
+
   for i in 0 ..< plan.count:
     let op = plan.getOperation(i)
     var errorMsg = ""
 
-    case op.opType
-    of OpCreateSymlink:
-      errorMsg = executeCreateSymlink(op)
-    of OpRemoveSymlink:
-      errorMsg = executeRemoveSymlink(op)
-    of OpMoveFile:
-      errorMsg = executeMoveFile(op)
-    of OpMoveDir:
-      errorMsg = executeMoveDir(op)
-    of OpCreateDir:
-      errorMsg = executeCreateDir(op)
-    of OpRemoveFile:
-      errorMsg = executeRemoveFile(op)
-    of OpRemoveDir:
-      errorMsg = executeRemoveDir(op)
+    let pathValidationError = validateOperationPaths(op)
+    if pathValidationError.len > 0:
+      errorMsg = pathValidationError
+    else:
+      case op.opType
+      of OpCreateSymlink:
+        errorMsg = executeCreateSymlink(op)
+      of OpRemoveSymlink:
+        errorMsg = executeRemoveSymlink(op)
+      of OpMoveFile:
+        errorMsg = executeMoveFile(op)
+      of OpMoveDir:
+        errorMsg = executeMoveDir(op)
+      of OpCreateDir:
+        errorMsg = executeCreateDir(op)
+      of OpRemoveFile:
+        errorMsg = executeRemoveFile(op)
+      of OpRemoveDir:
+        errorMsg = executeRemoveDir(op)
 
     if errorMsg.len > 0:
       result.failed += 1

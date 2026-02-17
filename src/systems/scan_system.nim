@@ -1,10 +1,9 @@
-import std/[os, strutils]
-import ../core/types
+import std/os
+import ../core/[types, path_safety]
 import ../components/[status, profiles]
 import path_resolution
 
 type ScanConfig* = object
-  maxDepth*: int
   maxFiles*: int
 
 proc estimateFileCount*(dir: string): int =
@@ -27,7 +26,7 @@ proc isParentSymlinked*(fullPath, homePath, profileDir: string): bool =
       let target = expandSymlink(currentHome)
       if target == currentFull:
         return true
-      elif target.startsWith(profileDir):
+      elif isWithinPath(target, profileDir):
         return true
     currentHome = currentHome.parentDir
     currentFull = currentFull.parentDir
@@ -39,7 +38,7 @@ proc determineStatus*(fullPath, homePath, profileDir: string): LinkStatus =
     let target = expandSymlink(homePath)
     if target == fullPath:
       return Linked
-    elif target.startsWith(profileDir):
+    elif isWithinPath(target, profileDir):
       return OtherProfile
     return Conflict
   elif fileExists(homePath) or dirExists(homePath):
@@ -57,7 +56,11 @@ proc scanProfile*(
 
   var fileCount = 0
   for kind, categoryPath in walkDir(profileDir, relative = true):
+    if fileCount >= config.maxFiles:
+      break
+
     if kind == pcDir:
+      let category = getCategory(categoryPath)
       let catDir = profileDir / categoryPath
 
       for itemPath in walkDirRec(catDir, relative = true):
@@ -66,14 +69,11 @@ proc scanProfile*(
 
         let fullPath = catDir / itemPath
         let relPath = categoryPath / itemPath
-
-        if dirExists(fullPath) or fileExists(fullPath):
-          let homePath = resolveDestPath(profileDir, relPath)
-          let status = determineStatus(fullPath, homePath, profileDir)
-
-          result.addStatusEntry(relPath, homePath, status)
-          fileCount += 1
+        let homePath = resolveDestPathParts(categoryPath, itemPath)
+        let status = determineStatus(fullPath, homePath, profileDir)
+        result.addStatusEntry(relPath, homePath, category, status)
+        fileCount += 1
 
 proc scanProfileSimple*(profiles: ProfileData, profileId: ProfileId): StatusData =
-  let config = ScanConfig(maxDepth: 10, maxFiles: 8192)
+  let config = ScanConfig(maxFiles: 8192)
   scanProfile(profiles, profileId, config)

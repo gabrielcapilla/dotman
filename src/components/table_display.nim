@@ -97,14 +97,23 @@ func calculateColumnWidths*(rows: openArray[seq[Cell]]): seq[int] {.noSideEffect
 func renderTable*(
     headers: openArray[Cell], rows: openArray[seq[Cell]], style: BoxStyle
 ): string =
-  var allRows: seq[seq[Cell]]
-  allRows.add(@headers)
+  let colCount = headers.len
+  var colWidths = newSeq[int](colCount)
+
+  for i, cell in headers:
+    colWidths[i] = cell.content.len + 2
+
   for row in rows:
-    allRows.add(row)
+    for i, cell in row:
+      let cellWidth = cell.content.len + 2
+      if cellWidth > colWidths[i]:
+        colWidths[i] = cellWidth
 
-  let colWidths = calculateColumnWidths(allRows)
-
-  result = ""
+  var rowWidth = 1
+  for w in colWidths:
+    rowWidth += w + 1
+  let lineCount = rows.len * 2 + 3
+  result = newStringOfCap(lineCount * (rowWidth + 1))
 
   result.add(
     renderLine(colWidths, style, style.topLeft, style.horizDown, style.topRight)

@@ -1,5 +1,5 @@
 import std/strutils
-import ../core/types
+import ../core/[types, path_pool]
 
 type
   CategoryStats* = object
@@ -14,9 +14,11 @@ type
     linked*: int
     notLinked*: int
     conflicts*: int
-    relPaths*: seq[string]
-    homePaths*: seq[string]
+    relPathIds*: seq[int32]
+    homePathIds*: seq[int32]
+    categories*: seq[Category]
     statuses*: seq[LinkStatus]
+    pathPool*: PathPool
 
 proc initStatusData*(capacity: int = 8192): StatusData =
   StatusData(
@@ -25,17 +27,22 @@ proc initStatusData*(capacity: int = 8192): StatusData =
     linked: 0,
     notLinked: 0,
     conflicts: 0,
-    relPaths: newSeq[string](capacity),
-    homePaths: newSeq[string](capacity),
+    relPathIds: newSeq[int32](capacity),
+    homePathIds: newSeq[int32](capacity),
+    categories: newSeq[Category](capacity),
     statuses: newSeq[LinkStatus](capacity),
+    pathPool: initPathPool(capacity * 2),
   )
 
 proc getCategory*(relPath: string): Category {.noSideEffect.} =
-  let parts = relPath.split("/")
-  if parts.len == 0:
-    return Config
+  let sep = relPath.find('/')
+  let head =
+    if sep < 0:
+      relPath
+    else:
+      relPath[0 ..< sep]
 
-  case parts[0]
+  case head
   of "config":
     return Config
   of "share":
@@ -50,17 +57,22 @@ proc getCategory*(relPath: string): Category {.noSideEffect.} =
     return Config
 
 proc addStatusEntry*(
-    data: var StatusData, relPath, homePath: string, status: LinkStatus
+    data: var StatusData,
+    relPath, homePath: string,
+    category: Category,
+    status: LinkStatus,
 ) =
   if data.count >= data.capacity:
     let newCap = data.capacity * 2
-    data.relPaths.setLen(newCap)
-    data.homePaths.setLen(newCap)
+    data.relPathIds.setLen(newCap)
+    data.homePathIds.setLen(newCap)
+    data.categories.setLen(newCap)
     data.statuses.setLen(newCap)
     data.capacity = newCap
 
-  data.relPaths[data.count] = relPath
-  data.homePaths[data.count] = homePath
+  data.relPathIds[data.count] = data.pathPool.internPath(relPath)
+  data.homePathIds[data.count] = data.pathPool.internPath(homePath)
+  data.categories[data.count] = category
   data.statuses[data.count] = status
   data.count += 1
 
@@ -71,6 +83,12 @@ proc addStatusEntry*(
     inc(data.notLinked)
   of Conflict, OtherProfile:
     inc(data.conflicts)
+
+proc relPathAt*(data: StatusData, index: int): string {.inline.} =
+  result = data.pathPool.getPath(data.relPathIds[index])
+
+proc homePathAt*(data: StatusData, index: int): string {.inline.} =
+  result = data.pathPool.getPath(data.homePathIds[index])
 
 proc removeIndex*(data: var StatusData, index: int) =
   if index < 0 or index >= data.count:
@@ -88,8 +106,9 @@ proc removeIndex*(data: var StatusData, index: int) =
     dec(data.conflicts)
 
   if index != last:
-    data.relPaths[index] = data.relPaths[last]
-    data.homePaths[index] = data.homePaths[last]
+    data.relPathIds[index] = data.relPathIds[last]
+    data.homePathIds[index] = data.homePathIds[last]
+    data.categories[index] = data.categories[last]
     data.statuses[index] = data.statuses[last]
 
   data.count -= 1

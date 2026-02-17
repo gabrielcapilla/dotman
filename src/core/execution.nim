@@ -1,3 +1,5 @@
+import path_pool
+
 type
   OperationType* = enum
     OpCreateSymlink
@@ -17,16 +19,18 @@ type
     count*: int
     capacity*: int
     opTypes*: seq[OperationType]
-    sources*: seq[string]
-    dests*: seq[string]
+    sourceIds*: seq[int32]
+    destIds*: seq[int32]
+    pathPool*: PathPool
 
 proc initExecutionPlan*(capacity: int = 1024): ExecutionPlan =
   ExecutionPlan(
     count: 0,
     capacity: capacity,
     opTypes: newSeq[OperationType](capacity),
-    sources: newSeq[string](capacity),
-    dests: newSeq[string](capacity),
+    sourceIds: newSeq[int32](capacity),
+    destIds: newSeq[int32](capacity),
+    pathPool: initPathPool(capacity * 2),
   )
 
 proc addOperation*(
@@ -35,13 +39,13 @@ proc addOperation*(
   if plan.count >= plan.capacity:
     let newCap = plan.capacity * 2
     plan.opTypes.setLen(newCap)
-    plan.sources.setLen(newCap)
-    plan.dests.setLen(newCap)
+    plan.sourceIds.setLen(newCap)
+    plan.destIds.setLen(newCap)
     plan.capacity = newCap
 
   plan.opTypes[plan.count] = opType
-  plan.sources[plan.count] = source
-  plan.dests[plan.count] = dest
+  plan.sourceIds[plan.count] = plan.pathPool.internPath(source)
+  plan.destIds[plan.count] = plan.pathPool.internPath(dest)
   plan.count += 1
 
 proc addCreateSymlink*(plan: var ExecutionPlan, source, dest: string) =
@@ -70,7 +74,9 @@ proc getOperation*(plan: ExecutionPlan, index: int): Operation =
     raise newException(IndexDefect, "Operation index out of bounds")
 
   Operation(
-    opType: plan.opTypes[index], source: plan.sources[index], dest: plan.dests[index]
+    opType: plan.opTypes[index],
+    source: plan.pathPool.getPath(plan.sourceIds[index]),
+    dest: plan.pathPool.getPath(plan.destIds[index]),
   )
 
 proc clear*(plan: var ExecutionPlan) =

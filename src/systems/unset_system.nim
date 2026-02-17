@@ -1,5 +1,5 @@
-import std/[os, strutils]
-import ../core/[types, result, execution]
+import std/os
+import ../core/[types, result, execution, path_safety]
 import ../components/profiles
 import path_resolution, add_system
 
@@ -8,11 +8,7 @@ proc isDotmanManaged*(linkPath: string, profileDir: string): bool =
     return false
 
   let target = expandSymlink(linkPath)
-
-  if target.startsWith(profileDir):
-    return true
-
-  return false
+  isWithinPath(target, profileDir)
 
 proc planUnsetFile*(
     profiles: ProfileData, profileId: ProfileId, name: string
