@@ -17,8 +17,16 @@ nimble.paths
 *.nimble_link
 nimble.develop
 
-# Binary
-dotman
+# Local binaries and release assets
+/dotman
+/bin/
+
+# Local-only project material
+/benchmarks/
+/tests/
+/tools/
+/.minerva/
+/RESUME.md
 
 # Editor files
 *~

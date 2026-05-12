@@ -1,168 +1,174 @@
 #!/usr/bin/env bash
 
-# Strict mode for error handling
-set -o errexit -o nounset -o pipefail
+set -euo pipefail
 
-# Colors RGB & End
-declare -r R="\033[1;31m"
-declare -r G="\033[1;32m"
-declare -r Y="\033[1;33m"
-declare -r E="\033[0m"
+readonly REPO="gabrielcapilla/dotman"
+readonly BINARY_NAME="dotman"
+readonly INSTALL_DIR="${HOME}/.local/bin"
+readonly REQUIRED_SPACE_MB=10
+readonly MAX_DOWNLOAD_TIME=300
+readonly MAX_FILE_SIZE_MB=8
 
-# Color codes
-declare -r A="${Y}::${E}" # Action
-declare -r S="${G}::${E}" # Success
-declare -r F="${R}::${E}" # Error/Fail
+readonly RED=$'\033[1;31m'
+readonly GREEN=$'\033[1;32m'
+readonly YELLOW=$'\033[1;33m'
+readonly RESET=$'\033[0m'
+readonly ACTION="${YELLOW}::${RESET}"
+readonly SUCCESS="${GREEN}::${RESET}"
+readonly FAILURE="${RED}::${RESET}"
 
-# Paths & Config
-declare -r REPO="gabrielcapilla/dotman"
-declare -r BINARY_NAME="dotman"
-declare -r INSTALL_DIR="${HOME}/.local/bin"
-declare -r API_URL="https://api.github.com/repos/${REPO}/releases/latest"
-declare -r REQUIRED_SPACE_MB=10
-declare -r MAX_DOWNLOAD_TIME=300
-declare -r MAX_FILE_SIZE_MB=5
+TEMP_FILE=""
 
-# Global state
-declare -g TEMP_FILE=""
-
-# Log error message and exit with a non-zero status
-function log_error() {
-  cleanup
-  printf >&2 "${F} %s\n" "$*"
-  exit 1
-}
-
-# Cleanup temporary files on exit
-function cleanup() {
+cleanup() {
   if [[ -n "${TEMP_FILE}" && -f "${TEMP_FILE}" ]]; then
     rm -f -- "${TEMP_FILE}"
   fi
 }
 
-# Check if required dependencies are installed
-function check_dependencies() {
-  command -v curl &>/dev/null || log_error "curl is not installed"
-  command -v file &>/dev/null || log_error "file is not installed"
-  command -v sha256sum &>/dev/null || log_error "sha256sum is not installed"
+fail() {
+  printf >&2 "%b %s\n" "${FAILURE}" "$*"
+  exit 1
 }
 
-# Check available disk space
-function check_disk_space() {
+require_cmd() {
+  command -v "$1" >/dev/null 2>&1 || fail "$1 is required"
+}
+
+check_dependencies() {
+  require_cmd curl
+  require_cmd df
+  require_cmd file
+  require_cmd readelf
+  require_cmd awk
+}
+
+check_disk_space() {
   local available_space_mb
-  available_space_mb=$(df -m "${HOME}" | awk 'NR==2 {print $4}')
+  available_space_mb=$(df -Pm "${HOME}" | awk 'NR == 2 { print $4 }')
+  [[ "${available_space_mb}" =~ ^[0-9]+$ ]] || fail "could not read available disk space"
 
-  if [[ "${available_space_mb}" -lt "${REQUIRED_SPACE_MB}" ]]; then
-    log_error "Insufficient disk space. Required: ${REQUIRED_SPACE_MB}MB, Available: ${available_space_mb}MB"
+  if ((available_space_mb < REQUIRED_SPACE_MB)); then
+    fail "insufficient disk space: need ${REQUIRED_SPACE_MB}MB, have ${available_space_mb}MB"
   fi
 }
 
-# Verify INSTALL_DIR is in PATH
-function check_path() {
-  if [[ ! ":${PATH}:" == *":${INSTALL_DIR}:"* ]]; then
-    printf >&2 "%b Warning: %s is not in your PATH\n" "${Y}" "${INSTALL_DIR}"
-    printf >&2 "%b Add the following to your shell profile:\n" "${Y}"
-    printf >&2 "%b   export PATH=\"%s:\$PATH\"\n" "${Y}" "${INSTALL_DIR}"
+cpu_has_flag() {
+  local flag="$1"
+  awk -v flag="${flag}" '
+    /^flags[[:space:]]*:/ {
+      for (i = 3; i <= NF; i++) {
+        if ($i == flag) {
+          found = 1
+          exit
+        }
+      }
+    }
+    END { exit found ? 0 : 1 }
+  ' /proc/cpuinfo
+}
+
+supports_x86_64_v3() {
+  [[ "$(uname -m)" == "x86_64" ]] || return 1
+  [[ -r /proc/cpuinfo ]] || return 1
+
+  local flag
+  for flag in avx avx2 bmi1 bmi2 f16c fma movbe xsave; do
+    cpu_has_flag "${flag}" || return 1
+  done
+
+  cpu_has_flag lzcnt || cpu_has_flag abm || return 1
+}
+
+select_asset() {
+  [[ "$(uname -m)" == "x86_64" ]] || fail "unsupported architecture: $(uname -m)"
+
+  if supports_x86_64_v3; then
+    printf 'dotman-linux-x86_64-v3\n'
+  else
+    printf 'dotman-linux-x86_64\n'
   fi
 }
 
-# Check if binary is already installed and ask for update confirmation
-function check_existing_installation() {
+release_url_for() {
+  local asset="$1"
+  printf 'https://github.com/%s/releases/latest/download/%s\n' "${REPO}" "${asset}"
+}
+
+check_path() {
+  if [[ ":${PATH}:" != *":${INSTALL_DIR}:"* ]]; then
+    printf >&2 "%b warning: %s is not in PATH\n" "${ACTION}" "${INSTALL_DIR}"
+    printf >&2 "%b add this to your shell profile:\n" "${ACTION}"
+    printf >&2 "  export PATH=\"%s:\$PATH\"\n" "${INSTALL_DIR}"
+  fi
+}
+
+confirm_existing_installation() {
   local binary_path="${INSTALL_DIR}/${BINARY_NAME}"
+  [[ -e "${binary_path}" ]] || return 0
 
-  if [[ -f "${binary_path}" ]]; then
-    printf >&2 "%b %s is already installed at %s\n" "${A}" "${BINARY_NAME}" "${binary_path}"
-    printf >&2 "%b Do you want to update it? [y/N]: " "${A}"
-
-    local response
-    read -r response </dev/tty
-
-    if [[ "${response}" != "y" && "${response}" != "Y" ]]; then
-      printf >&2 "%b Installation cancelled\n" "${S}"
-      exit 0
-    fi
+  if [[ ! -t 0 ]]; then
+    printf >&2 "%b replacing existing %s\n" "${ACTION}" "${binary_path}"
+    return 0
   fi
+
+  local response
+  printf >&2 "%b %s already exists. Update it? [y/N]: " "${ACTION}" "${binary_path}"
+  read -r response
+  [[ "${response}" == "y" || "${response}" == "Y" ]] || exit 0
 }
 
-# Get download URL from GitHub API
-function get_download_url() {
-  local download_url
-  download_url=$(curl -s --fail "${API_URL}" | grep "browser_download_url.*${BINARY_NAME}" | cut -d '"' -f 4)
+validate_binary() {
+  local file_path="$1"
 
-  [[ -n "${download_url}" ]] || log_error "Could not find download URL for ${BINARY_NAME}"
-
-  echo "${download_url}"
+  [[ -s "${file_path}" ]] || fail "downloaded file is empty"
+  file "${file_path}" | grep -q 'ELF 64-bit' || fail "downloaded file is not a 64-bit ELF binary"
+  file "${file_path}" | grep -q 'executable' || fail "downloaded ELF is not executable"
+  readelf -h "${file_path}" >/dev/null || fail "downloaded file has an invalid ELF header"
 }
 
-# Validate that downloaded file is a valid ELF executable
-function validate_elf() {
-  local file="$1"
+download_binary() {
+  local asset="$1"
+  local url="$2"
 
-  if ! file "${file}" | grep -q "ELF 64-bit LSB.*executable"; then
-    log_error "Invalid ELF file: downloaded file is not a valid 64-bit executable"
-  fi
-}
-
-# Download binary to temporary file
-function download_binary() {
-  local url="$1"
-
-  printf >&2 "%b Downloading %s...\n" "${A}" "${BINARY_NAME}"
-
+  printf "%b downloading %s\n" "${ACTION}" "${asset}"
   TEMP_FILE=$(mktemp)
 
-  curl -sL --fail \
+  curl --fail --location --silent --show-error \
     --max-time "${MAX_DOWNLOAD_TIME}" \
     --max-filesize "$((MAX_FILE_SIZE_MB * 1024 * 1024))" \
-    "${url}" \
-    -o "${TEMP_FILE}" || log_error "Download failed"
+    --output "${TEMP_FILE}" \
+    "${url}" || fail "download failed: ${url}"
 
-  [[ -f "${TEMP_FILE}" ]] || log_error "Download failed: file not created"
-
-  validate_elf "${TEMP_FILE}"
+  validate_binary "${TEMP_FILE}"
 }
 
-# Install binary to target directory
-function install_binary() {
+install_binary() {
   local binary_path="${INSTALL_DIR}/${BINARY_NAME}"
-
-  printf >&2 "%b Installing %s to %s...\n" "${A}" "${BINARY_NAME}" "${INSTALL_DIR}"
 
   mkdir -p -- "${INSTALL_DIR}"
-  mv -- "${TEMP_FILE}" "${binary_path}"
-  chmod +x -- "${binary_path}"
-
-  TEMP_FILE="" # Clear temp file reference after successful move
+  install -m 0755 "${TEMP_FILE}" "${binary_path}"
 }
 
-# Verify installation
-function verify_installation() {
+verify_installation() {
   local binary_path="${INSTALL_DIR}/${BINARY_NAME}"
 
-  if [[ ! -x "${binary_path}" ]]; then
-    printf >&2 "%s Installation verification failed\n" "${F}"
-    log_error "Could not verify installation"
-  fi
-
-  printf "%b Successfully installed %s to %s/\n" "${S}" "${BINARY_NAME}" "${INSTALL_DIR}"
+  [[ -x "${binary_path}" ]] || fail "installation verification failed"
+  printf "%b installed %s to %s\n" "${SUCCESS}" "${BINARY_NAME}" "${binary_path}"
 }
 
-# Main function orchestrating the script flow
-function main() {
-  trap cleanup EXIT
+main() {
+  trap cleanup EXIT INT TERM
 
   check_dependencies
   check_disk_space
   check_path
-  check_existing_installation
+  confirm_existing_installation
 
-  local download_url
-  download_url=$(get_download_url)
-
-  download_binary "${download_url}"
+  local asset
+  asset=$(select_asset)
+  download_binary "${asset}" "$(release_url_for "${asset}")"
   install_binary
   verify_installation
 }
 
-# Execute the main function
 main "$@"

@@ -1,6 +1,7 @@
-import components/profiles
-import systems/command_dispatcher
-import core/[types, state, command_parser, result, completion]
+import dotman/domain/profiles
+import dotman/app/[command_dispatcher, state]
+import dotman/domain/[types, result]
+import dotman/cli/[command_parser, completion]
 
 when isMainModule:
   try:
@@ -14,7 +15,7 @@ when isMainModule:
       completion.printCompletion(parsed.completionKind)
       quit(0)
 
-    let initialProfiles = loadProfiles()
+    var initialProfiles = loadProfiles()
     let initialProfileId = initialProfiles.findProfileId(MainProfile)
     var appState = initAppState(initialProfiles, initialProfileId)
 

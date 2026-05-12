@@ -12,7 +12,7 @@ Full documentation: https://gabrielcapilla.github.io/projects/dotman/docs
 curl -sL gabrielcapilla.github.io/install | sh -s dotman
 ```
 
-Or via Nimble (requires Nim 2.2.6+):
+Or via Nimble (requires Nim 2.2.0+):
 
 ```bash
 nimble install https://github.com/gabrielcapilla/dotman.git@#head
