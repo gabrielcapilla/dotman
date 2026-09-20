@@ -9,7 +9,7 @@ type ProfileName* = object
 
 const
   AppName* = "dotman"
-  AppVersion* = "0.4.0"
+  AppVersion* = "0.4.1"
   MaxProfiles* = 1024'i32
   MainProfile* = "main"
   ProfileIdInvalid* = ProfileId(-1)
