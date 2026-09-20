@@ -9,7 +9,7 @@ Full documentation: https://gabrielcapilla.github.io/projects/dotman/docs
 ## Installation
 
 ```bash
-curl -sL gabrielcapilla.github.io/install | sh -s dotman
+curl -sL gabrielcapilla.github.io/install | bash -s dotman
 ```
 
 Or via Nimble (requires Nim 2.2.0+):
