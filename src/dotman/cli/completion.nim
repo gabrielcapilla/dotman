@@ -6,13 +6,6 @@ type
     ZshCompletion
     FishCompletion
 
-  CommandMetadata* = object
-    command*: string
-    shortFlag*: string
-    description*: string
-    takesArgument*: bool
-    argumentType*: string
-
 const
   CommandDescriptions*: Table[string, string] = {
     "init": "Initialize dotman in home directory",

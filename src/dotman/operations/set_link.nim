@@ -56,12 +56,6 @@ proc inferCategoryFromHome*(
   else:
     return ("home", relPath)
 
-proc countFilesInDir*(path: string): int =
-  result = 0
-  for kind, _ in walkDir(path):
-    if kind == pcFile:
-      result += 1
-
 proc planMoveFileToProfile*(
     profiles: var ProfileData, profileId: ProfileId, homePath: string
 ): ExecutionPlan =
@@ -87,7 +81,7 @@ proc planMoveFileToProfile*(
     raise ProfileError(msg: "Already exists in profile: " & relPath)
 
   if fileExists(canonicalHomePath) or dirExists(canonicalHomePath):
-    result = initExecutionPlan(2)
+    result = initExecutionPlan(3)
 
     if dirExists(canonicalHomePath):
       result.addCreateDir(destPath.parentDir)

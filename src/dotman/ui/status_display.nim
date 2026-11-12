@@ -16,19 +16,6 @@ type
     category*: Category
     subCategories*: seq[SubCategoryStats]
 
-proc getCategoryName(cat: Category): string =
-  case cat
-  of Config:
-    return "config"
-  of Share:
-    return "share"
-  of Home:
-    return "home"
-  of Local:
-    return "local"
-  of Bin:
-    return "bin"
-
 proc collectSubCategories(
     stats: Table[int32, SubCategoryStats]
 ): seq[SubCategoryStats] =
@@ -97,7 +84,7 @@ proc showCategorySummary*(
 
     var rows = newSeqOfCap[array[5, Cell]](data.count)
     for catStats in categorySubStats:
-      let catName = getCategoryName(catStats.category)
+      let catName = categoryName(catStats.category)
 
       if catStats.subCategories.len > 0:
         rows.setLen(0)
@@ -140,7 +127,7 @@ proc showCategorySummary*(
       let cat = category.get()
       let stats = categoryStats[cat]
       var row: array[5, Cell]
-      row[0] = newCell(getCategoryName(cat) & "/", AlignLeft)
+      row[0] = newCell(categoryName(cat) & "/", AlignLeft)
       row[1] = newCell($stats.linked, AlignRight)
       row[2] = newCell($stats.notLinked, AlignRight)
       row[3] = newCell($stats.conflicts, AlignRight)
@@ -151,7 +138,7 @@ proc showCategorySummary*(
         let stats = categoryStats[cat]
         if stats.linked + stats.notLinked + stats.conflicts + stats.other > 0:
           var row: array[5, Cell]
-          row[0] = newCell(getCategoryName(cat) & "/", AlignLeft)
+          row[0] = newCell(categoryName(cat) & "/", AlignLeft)
           row[1] = newCell($stats.linked, AlignRight)
           row[2] = newCell($stats.notLinked, AlignRight)
           row[3] = newCell($stats.conflicts, AlignRight)
@@ -166,7 +153,7 @@ proc showCategorySummary*(
     if category.isSome():
       let cat = category.get()
       let stats = categoryStats[cat]
-      echo "Total for " & getCategoryName(cat) & ": " & $stats.linked & " linked, " &
+      echo "Total for " & categoryName(cat) & ": " & $stats.linked & " linked, " &
         $stats.notLinked & " not linked, " & $stats.conflicts & " conflicts, " &
         $stats.other & " other"
     else:

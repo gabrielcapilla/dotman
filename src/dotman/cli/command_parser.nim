@@ -21,7 +21,6 @@ type
     CmdCompletion
 
   CommandArgs* = object
-    command*: Command
     profile*: string
     fileName*: string
     sourceProfile*: string

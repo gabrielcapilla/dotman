@@ -1,7 +1,5 @@
 import std/os
 
-type Category* = distinct string
-
 proc getDestRoot*(category: string, home: string): string {.noSideEffect.} =
   if category == "home":
     result = home

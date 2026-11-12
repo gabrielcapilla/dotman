@@ -5,7 +5,6 @@ import paths
 
 type ScanConfig* = object
   maxFiles*: int
-  storeHomePaths*: bool
 
 type ParentPathInfo = object
   canContainFiles: bool
@@ -157,5 +156,5 @@ proc scanProfile*(
         fileCount += 1
 
 proc scanProfileSimple*(profiles: var ProfileData, profileId: ProfileId): StatusData =
-  let config = ScanConfig(maxFiles: 8192, storeHomePaths: true)
+  let config = ScanConfig(maxFiles: 8192)
   scanProfile(profiles, profileId, config)

@@ -5,7 +5,7 @@ import paths, symlinks
 
 proc validatePull*(profiles: var ProfileData, profileId: ProfileId): FileBatch =
   let profileDir = profiles.getProfilePath(profileId)
-  var batch = initFileBatch(1024)
+  var batch = initFileBatch(256)
 
   for kind, categoryPath in walkDir(profileDir, relative = true):
     if kind == pcDir:
@@ -21,10 +21,7 @@ proc validatePull*(profiles: var ProfileData, profileId: ProfileId): FileBatch =
             if target == fullPath:
               batch.addToFileBatch(fullPath, destPath)
           elif dirExists(destPath) or symlinkExists(destPath):
-            var tempBatch = initFileBatch(64)
-            createSymlinksRecursive(profileDir, relPath, tempBatch)
-            for i in 0 ..< tempBatch.count:
-              batch.addToFileBatch(tempBatch.sourceAt(i), tempBatch.destinationAt(i))
+            createSymlinksRecursive(profileDir, relPath, batch)
         elif kind2 == pcFile and fileExists(fullPath):
           if symlinkExists(destPath):
             let target = expandSymlink(destPath)

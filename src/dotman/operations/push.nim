@@ -4,7 +4,7 @@ import ../domain/[batches, profiles]
 import symlinks, validation
 
 proc collectPushBatch(profileDir: string): FileBatch =
-  var batch = initFileBatch(1024)
+  var batch = initFileBatch(256)
 
   for kind, categoryPath in walkDir(profileDir, relative = true):
     if kind == pcDir:

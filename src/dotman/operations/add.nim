@@ -43,7 +43,7 @@ proc planAddFile*(
   let profileDir = profiles.getProfilePath(profileId)
   let relPath = findFileInProfile(profiles, profileId, name)
 
-  var batch = initFileBatch(1024)
+  var batch = initFileBatch(256)
 
   createSymlinksRecursive(profileDir, relPath, batch)
 

@@ -13,10 +13,6 @@ proc runProfileClone*(source: string, dest: string) =
   profile_store.cloneProfile(source, dest)
   echo "Cloned " & source & " to " & dest
 
-proc runProfileRemove*(name: string) =
-  profile_store.removeProfile(name)
-  echo "Removed profile: " & name
-
 proc runProfileList*() =
   let profiles = profile_store.listProfiles()
   if profiles.len == 0:

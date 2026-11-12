@@ -7,7 +7,7 @@ type FileBatch* = object
   destinationIds*: seq[int32]
   pathPool*: PathPool
 
-proc initFileBatch*(capacity: int = 1024): FileBatch =
+proc initFileBatch*(capacity: int = 256): FileBatch =
   FileBatch(
     count: 0,
     capacity: capacity,

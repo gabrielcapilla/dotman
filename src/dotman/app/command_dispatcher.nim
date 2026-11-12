@@ -84,7 +84,7 @@ proc showStatus*(
   var data = scanProfile(
     profiles,
     profileId,
-    ScanConfig(maxFiles: 8192, storeHomePaths: flags.filter != FilterAll),
+    ScanConfig(maxFiles: 8192),
   )
 
   if flags.filter == FilterAll:

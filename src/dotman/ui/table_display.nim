@@ -103,54 +103,8 @@ func renderRow*(
 
     result.add(vertical)
 
-func calculateColumnWidths*(rows: openArray[seq[Cell]]): seq[int] {.noSideEffect.} =
-  let colCount = rows[0].len
-  result = newSeq[int](colCount)
-
-  for row in rows:
-    for i, cell in row:
-      let cellWidth = cell.content.len + 2
-      if cellWidth > result[i]:
-        result[i] = cellWidth
-
-func renderTable*(
-    headers: openArray[Cell], rows: openArray[seq[Cell]], style: BoxStyle
-): string =
-  let colCount = headers.len
-  var colWidths = newSeq[int](colCount)
-
-  for i, cell in headers:
-    colWidths[i] = cell.content.len + 2
-
-  for row in rows:
-    for i, cell in row:
-      let cellWidth = cell.content.len + 2
-      if cellWidth > colWidths[i]:
-        colWidths[i] = cellWidth
-
-  var rowWidth = 1
-  for w in colWidths:
-    rowWidth += w + 1
-  let lineCount = rows.len * 2 + 3
-  result = newStringOfCap(lineCount * (rowWidth + 1))
-
-  result.add(renderLine(colWidths, style, GlyphTopLeft, GlyphHorizDown, GlyphTopRight))
-  result.add("\n")
-  result.add(renderRow(headers, colWidths, style))
-  result.add("\n")
-
-  for row in rows:
-    result.add(renderLine(colWidths, style, GlyphVertRight, GlyphCross, GlyphVertLeft))
-    result.add("\n")
-    result.add(renderRow(row, colWidths, style))
-    result.add("\n")
-
-  result.add(
-    renderLine(colWidths, style, GlyphBottomLeft, GlyphHorizUp, GlyphBottomRight)
-  )
-
-func renderTable*[N: static[int]](
-    headers: openArray[Cell], rows: openArray[array[N, Cell]], style: BoxStyle
+func renderTable*[Row](
+    headers: openArray[Cell], rows: openArray[Row], style: BoxStyle
 ): string =
   let colCount = headers.len
   var colWidths = newSeq[int](colCount)
